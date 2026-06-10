@@ -211,6 +211,32 @@ the Godot importer scans it. `export_presets.cfg` is tracked (no secrets).
   gi + sarashi, gauntlets, embers), Mizuki (long teal hair, ocean robes,
   water-orb staff).
 
+## 6b. Presentation direction (operator-approved 2026-06-10, post-brainstorm)
+
+"Cleaner gaming experience" vision blended from StS / Balatro / Cobalt Core /
+Against the Storm — four pillars: (1) feel the math (tiered hit choreography is
+the audio stand-in), (2) the icon economy as a physical object (Icon Forge),
+(3) the girls are a cast (cut-ins + barks), (4) the run is a place (medallion
+map, Colossus in the skyline, Armory Room draft). Style laws: pixel-snapped
+NEAREST everything, no smooth-particle confetti, never card frames.
+- **Batch A SHIPPED** (`e30f598`): hit-stop/punch-zoom/rim flashes, mass damage
+  numbers, intent icon chips, mutation glitch-flicker, ticker log + Log overlay,
+  heat-edge buttons, field CRT shader, victory/defeat staging, ember map trail,
+  save-version guard, cancel affordance.
+- **Batch B SHIPPED** (`5d4ef05`): forged-iron 9-slice on every panel
+  (assets/ui/ui_frame.png via `~/armory_chrome_gen.py`), Icon Forge rack with
+  molten-mint / shard-burn animations.
+- **Batch C NEXT**: the cast — cut-in busts + barks (data-driven lines), her-deck
+  command panel tint/portrait, idle quirks, map barks, bench presence (~$1.50).
+- **Batch D**: the world — medallion map + marching party, ember weather,
+  Colossus skyline, fight-start stamp, boss letterbox, Armory Room draft scene,
+  forge-quench scene wipe.
+- DA-converged but deferred (operator deprioritized phone): touch parity /
+  two-tap arm pattern / physical-pt layout audit — full spec in session
+  transcript; revisit when phone matters. Enemy-phase replay (L refactor, with
+  4 desync guards: tick events, deferred intent bubbles, gated outcome render,
+  incremental widgets) remains the top gameplay-feel item not yet built.
+
 ## 7. Pending / open
 
 - **Fun-gate rubric** — operator has the 6 questions written aside, testing
