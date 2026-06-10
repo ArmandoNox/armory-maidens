@@ -226,8 +226,14 @@ NEAREST everything, no smooth-particle confetti, never card frames.
 - **Batch B SHIPPED** (`5d4ef05`): forged-iron 9-slice on every panel
   (assets/ui/ui_frame.png via `~/armory_chrome_gen.py`), Icon Forge rack with
   molten-mint / shard-burn animations.
-- **Batch C NEXT**: the cast — cut-in busts + barks (data-driven lines), her-deck
-  command panel tint/portrait, idle quirks, map barks, bench presence (~$1.50).
+- **Batch C SHIPPED** (`90bf6ba`): 12 cut-in busts (assets/cutins/, 4 girls ×
+  confident/strained/fierce via `~/armory_cast_gen.py`); data/barks.json (lines
+  per girl per trigger: weak/kill/hurt/probe/switch_in/victory/map/map_low);
+  cut-in slam system (3.5s cooldown + per-trigger chance — punctuates, never
+  narrates); her-deck command header; per-girl idles (Kaede dead still, Riko
+  tilt-flick, Tsubaki boxer rock, Mizuki tidal); bench sprites bottom-center;
+  map barks (wounded complain first). Gotcha: one bust needed a looser chroma
+  threshold (yellow-green bg survived the standard key) — re-keyed raw, no regen.
 - **Batch D**: the world — medallion map + marching party, ember weather,
   Colossus skyline, fight-start stamp, boss letterbox, Armory Room draft scene,
   forge-quench scene wipe.
