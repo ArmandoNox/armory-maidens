@@ -24,6 +24,8 @@ func _init() -> void:
 	test_run_draft(db)
 	test_run_events(db)
 	test_boss(db)
+	test_save_roundtrip(db)
+	test_battle_stats(db)
 	print("")
 	print("RESULT: %d passed, %d failed" % [passed, failed])
 	quit(0 if failed == 0 else 1)
@@ -324,3 +326,51 @@ func test_boss(db: DataDB) -> void:
 		if b.party[i].hp >= hp_before[i]:
 			all_hit = false
 	check(all_hit, "Seismic Slam hits the whole active party")
+
+
+func test_save_roundtrip(db: DataDB) -> void:
+	print("save/load roundtrip:")
+	var r := Run.create(db, ["kaede", "riko", "tsubaki", "mizuki"], 21)
+	r.roster[0].hp = 33
+	r.roster[1].atk += 2
+	r.roster[2].moves[0] = "meteor_drive"
+	r.fights_won = 3
+	r.stats["weak_hits"] = 9
+	r.cur_floor = 1
+	r.cur_index = 0
+	r.map[1][0]["done"] = true
+	# Through JSON exactly like the save file (numbers become floats).
+	var json_dict = JSON.parse_string(JSON.stringify(r.to_dict()))
+	var r2 := Run.from_dict(db, json_dict)
+	check(r2.roster[0].hp == 33, "roster HP survives the roundtrip")
+	check(r2.roster[1].atk == r.roster[1].atk, "event-modified ATK survives")
+	check(r2.roster[2].moves[0] == "meteor_drive", "drafted moves survive")
+	check(r2.fights_won == 3 and int(r2.stats["weak_hits"]) == 9, "run stats survive")
+	check(r2.cur_floor == 1 and r2.map[1][0]["done"] == true, "map position and done flags survive")
+	check(r2.map[0][0]["edges"][0] is int, "edges sanitize back to int after JSON")
+	var before := r2.selectable_nodes().size()
+	check(before > 0, "loaded run still offers selectable nodes")
+	check(r2.rng.state == r.rng.state, "rng state restored (deterministic continuation)")
+
+
+func test_battle_stats(db: DataDB) -> void:
+	print("battle stats feed:")
+	var b := Battle.create(db, ["tsubaki", "riko", "kaede", "mizuki"], ["rustclad_sentinel"], 3)
+	var foe: Combatant = b.enemies[0]
+	foe.mutations = []
+	foe.elem_overrides = {}
+	foe.phys_overrides = {}
+	foe.mutation_revealed = false
+	b.player_action({ "type": "probe", "actor": 0, "target": 0 })
+	check(int(b.stats["probes"]) == 1, "probe counted")
+	# Tsubaki blunt vs armored = WEAK -> mint event recorded.
+	var icon_events_before := b.events.filter(func(e): return e["kind"] == "icon").size()
+	b.player_action({ "type": "attack", "actor": 0, "move": "jab_cross", "target": 0 })
+	check(int(b.stats["weak_hits"]) >= 1, "weak hit counted")
+	var icon_events: Array = b.events.filter(func(e): return e["kind"] == "icon")
+	check(icon_events.size() > icon_events_before and int(icon_events[-1]["amount"]) == 1, "mint emits an icon event for the UI")
+	if b.phase == "player" and b.icons > 0:
+		b.player_action({ "type": "switch", "slot": 1, "bench": 0 })
+		check(int(b.stats["switches"]) == 1, "switch counted")
+		var has_switch_event := b.events.any(func(e): return e["kind"] == "switch")
+		check(has_switch_event, "switch emits a UI event")

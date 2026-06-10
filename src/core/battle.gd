@@ -26,6 +26,8 @@ var result := ""             # "" | "victory" | "defeat"
 var intents: Array = []      # [{enemy: int, move: String, slot: int}]
 var log: Array = []
 var events: Array = []       # structured FX feed for the UI: {kind, target, amount, tier}
+                             # kinds: hit, heal, icon (amount +1 mint / -1 burn), switch
+var stats := { "rounds": 0, "weak_hits": 0, "probes": 0, "switches": 0 }
 
 
 static func create(p_db: DataDB, girl_ids: Array, enemy_ids: Array, seed_val: int) -> Battle:
@@ -65,6 +67,7 @@ static func create_with_party(p_db: DataDB, roster: Array, enemy_ids: Array, see
 
 func start_round() -> void:
 	round_num += 1
+	stats["rounds"] = round_num
 	bonus_minted = 0
 	for c in _all_living():
 		c.actions_this_round = 0
@@ -193,11 +196,15 @@ func _resolve_hits(attacker: Combatant, targets: Array, mv: Dictionary) -> int:
 			events.append({ "kind": "hit", "target": attacker, "actor": target, "amount": cdmg, "tier": Rules.tier_of(cmult) })
 			_log("%s counters for %d dmg!" % [target.display_name, cdmg])
 	var best_tier := Rules.tier_of(best_mult)
+	if best_tier == Rules.Tier.WEAK and attacker.side == "party":
+		stats["weak_hits"] = int(stats["weak_hits"]) + 1
 	if best_tier == Rules.Tier.WEAK and attacker.side == "party" and bonus_minted < MAX_BONUS_PER_ROUND:
 		bonus_minted += 1
+		events.append({ "kind": "icon", "target": attacker, "actor": attacker, "amount": 1, "tier": best_tier })
 		_log("Weakness struck — bonus icon!")
 		return 0
 	if best_tier == Rules.Tier.RESIST:
+		events.append({ "kind": "icon", "target": attacker, "actor": attacker, "amount": -1, "tier": best_tier })
 		_log("Resisted — an extra icon burns away.")
 		return 2
 	return 1
@@ -241,6 +248,8 @@ func _do_switch(slot: int, bench_index: int) -> void:
 	bench[bench_index] = outgoing
 	party[slot] = incoming
 	icons -= 1
+	stats["switches"] = int(stats["switches"]) + 1
+	events.append({ "kind": "switch", "target": incoming, "actor": outgoing, "amount": 0, "tier": Rules.Tier.NORMAL })
 	_log("%s switches in for %s!" % [incoming.display_name, outgoing.display_name if outgoing else "an empty slot"])
 	_fire_trigger(incoming)
 
@@ -270,6 +279,7 @@ func _do_probe(slot: int, target: int) -> void:
 	var foe: Combatant = enemies[target]
 	girl.actions_this_round += 1
 	icons -= 1
+	stats["probes"] = int(stats["probes"]) + 1
 	foe.mutation_revealed = true
 	if foe.mutations.is_empty():
 		_log("Probe: %s is true to its kind — no mutation." % foe.display_name)
@@ -405,6 +415,7 @@ func _promote_bench() -> void:
 				var incoming: Combatant = bench[bi]
 				bench[bi] = girl
 				party[slot] = incoming
+				events.append({ "kind": "switch", "target": incoming, "actor": girl, "amount": 0, "tier": Rules.Tier.NORMAL })
 				_log("%s steps up from the bench!" % incoming.display_name)
 				_fire_trigger(incoming)
 				break

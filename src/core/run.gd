@@ -25,6 +25,7 @@ var pending_battle: Battle = null
 var pending_draft := {}         # {girl_index, offers}
 var pending_event_id := ""
 var fights_won := 0
+var stats := { "rounds": 0, "weak_hits": 0, "probes": 0, "switches": 0 }
 
 
 static func create(p_db: DataDB, girl_ids: Array, seed_val: int) -> Run:
@@ -34,6 +35,62 @@ static func create(p_db: DataDB, girl_ids: Array, seed_val: int) -> Run:
 	for gid in girl_ids:
 		r.roster.append(Combatant.from_girl(p_db, gid))
 	r._gen_map()
+	return r
+
+
+## ---- Save / load -----------------------------------------------------------
+## Serializable whenever state != "battle" (battles are never persisted; the
+## last checkpoint is always the pre-fight map state).
+
+func to_dict() -> Dictionary:
+	return {
+		"act_id": act_id,
+		# Strings: JSON floats lose precision on 64-bit rng values.
+		"rng_seed": str(rng.seed),
+		"rng_state": str(rng.state),
+		"roster": roster.map(func(c): return c.to_save_dict()),
+		"map": map,
+		"cur_floor": cur_floor,
+		"cur_index": cur_index,
+		"state": state,
+		"result": result,
+		"pending_draft": pending_draft,
+		"pending_event_id": pending_event_id,
+		"fights_won": fights_won,
+		"stats": stats,
+	}
+
+
+static func from_dict(p_db: DataDB, d: Dictionary) -> Run:
+	var r := Run.new()
+	r.db = p_db
+	r.rng.seed = str(d["rng_seed"]).to_int()
+	r.rng.state = str(d["rng_state"]).to_int()
+	for cd in d["roster"]:
+		r.roster.append(Combatant.from_save_dict(p_db, cd))
+	r.act_id = d["act_id"]
+	# JSON round-trips numbers as floats; edges are used as array indices.
+	r.map = []
+	for floor_nodes in d["map"]:
+		var fixed: Array = []
+		for node in floor_nodes:
+			fixed.append({
+				"type": node["type"],
+				"edges": (node["edges"] as Array).map(func(j): return int(j)),
+				"done": bool(node["done"]),
+			})
+		r.map.append(fixed)
+	r.cur_floor = int(d["cur_floor"])
+	r.cur_index = int(d["cur_index"])
+	r.state = d["state"]
+	r.result = d["result"]
+	r.pending_draft = d["pending_draft"]
+	if r.pending_draft.has("girl_index"):
+		r.pending_draft["girl_index"] = int(r.pending_draft["girl_index"])
+	r.pending_event_id = d["pending_event_id"]
+	r.fights_won = int(d["fights_won"])
+	for k in d["stats"]:
+		r.stats[k] = int(d["stats"][k])
 	return r
 
 
@@ -150,6 +207,8 @@ func on_battle_finished() -> void:
 	if pending_battle == null or state != "battle":
 		return
 	var was_boss: bool = map[cur_floor][cur_index]["type"] == "boss"
+	for k in stats:
+		stats[k] = int(stats[k]) + int(pending_battle.stats.get(k, 0))
 	if pending_battle.result == "victory":
 		fights_won += 1
 		for c in roster:

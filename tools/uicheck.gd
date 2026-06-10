@@ -30,5 +30,9 @@ func _go() -> void:
 	print("action buttons after clicking %s: %d" % [girl.display_name, n])
 	if n < 4:
 		ok = false
+	var d: int = scene.detail_box.get_child_count()
+	print("detail panel entries after selection: %d" % d)
+	if d < 2:
+		ok = false
 	print("UICHECK %s" % ("PASS" if ok else "FAIL"))
 	quit(0 if ok else 1)

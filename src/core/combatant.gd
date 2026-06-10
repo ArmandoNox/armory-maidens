@@ -98,6 +98,19 @@ func _roll_mutation(db: DataDB, rng: RandomNumberGenerator) -> void:
 		phys_overrides[pick["key"]] = new_mult
 
 
+## Persist only what a run changes about a girl; the rest rebuilds from data.
+func to_save_dict() -> Dictionary:
+	return { "id": id, "hp": hp, "atk": atk, "moves": moves.duplicate() }
+
+
+static func from_save_dict(db: DataDB, d: Dictionary) -> Combatant:
+	var c := from_girl(db, d["id"])
+	c.hp = int(d["hp"])
+	c.atk = int(d["atk"])
+	c.moves = (d["moves"] as Array).duplicate()
+	return c
+
+
 func is_alive() -> bool:
 	return hp > 0
 

@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="Armory Maidens"
-run/main_scene="res://scenes/run_map.tscn"
+run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.6")
 
 [autoload]

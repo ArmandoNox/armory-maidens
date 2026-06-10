@@ -6,6 +6,57 @@ extends RefCounted
 const PANEL_BG := Color("#12143a")
 const BORDER := Color("#aeb4c8")
 const BORDER_DIM := Color("#4a4f6a")
+const GOLD := Color("#ffd24a")
+const RED := Color("#e2543e")
+const GREEN := Color("#6abf6a")
+const GREY := Color("#7f8597")
+const PURPLE := Color("#c77dff")
+
+static var _icon_cache := {}
+
+
+## Pixel icon from assets/icons/icon_<name>.png, or null if not generated yet.
+static func icon(icon_name: String) -> Texture2D:
+	if _icon_cache.has(icon_name):
+		return _icon_cache[icon_name]
+	var path := "res://assets/icons/icon_%s.png" % icon_name
+	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_icon_cache[icon_name] = tex
+	return tex
+
+
+## Small TextureRect for a pixel icon; falls back to a colored swatch so the
+## layout never breaks before art lands.
+static func icon_rect(icon_name: String, px: int = 20, fallback := Color("#5d6275")) -> Control:
+	var tex := icon(icon_name)
+	if tex != null:
+		var tr := TextureRect.new()
+		tr.texture = tex
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		tr.custom_minimum_size = Vector2(px, px)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return tr
+	var cr := ColorRect.new()
+	cr.color = fallback
+	cr.custom_minimum_size = Vector2(px, px)
+	cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return cr
+
+
+static func tier_color(tier: int) -> Color:
+	match tier:
+		Rules.Tier.WEAK: return GOLD
+		Rules.Tier.RESIST: return GREY
+		_: return Color("#c8ccd8")
+
+
+static func tier_verdict(tier: int) -> String:
+	match tier:
+		Rules.Tier.WEAK: return "WEAK — bonus icon"
+		Rules.Tier.RESIST: return "RESIST — burns 2 icons"
+		_: return "NORMAL"
 
 
 static func panel_box(bg: Color = PANEL_BG, border: Color = BORDER) -> StyleBoxFlat:
