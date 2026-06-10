@@ -13,6 +13,7 @@ var enemies: Dictionary = {}
 var encounters: Dictionary = {}
 var acts: Dictionary = {}
 var events: Dictionary = {}
+var barks: Dictionary = {}
 
 
 static func load_default() -> DataDB:
@@ -30,6 +31,7 @@ static func load_default() -> DataDB:
 	db.encounters = _load_json("res://data/encounters.json")
 	db.acts = _load_json("res://data/acts.json")
 	db.events = _load_json("res://data/events.json")
+	db.barks = _load_json("res://data/barks.json")
 	return db
 
 

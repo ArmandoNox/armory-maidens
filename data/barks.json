@@ -1,0 +1,43 @@
+{
+  "_comment": "Cut-in/bark lines. Categories: weak (struck a weakness), kill, hurt (dropped below 35%), probe (she scanned), switch_in, victory, map (idle flavor on the act map), map_low (her HP < 35% on the map). Expression per category: weak/kill/victory=confident or fierce, hurt=strained, probe/map=confident.",
+  "kaede": {
+    "weak": ["Right through the seam.", "The armor remembers where it cracked.", "There. As I read it."],
+    "kill": ["Rest now.", "It is finished.", "One stroke. Enough."],
+    "hurt": ["A scratch... on the bone.", "I can still stand.", "Tch. Careless."],
+    "probe": ["Look closer. Always.", "Its stance betrays it."],
+    "switch_in": ["I'll hold this ground.", "Behind me."],
+    "victory": ["The blade is patient.", "We move on."],
+    "map": ["The road is the whetstone.", "Stay in formation up there.", "I dislike how quiet it is."],
+    "map_low": ["I will manage. Don't fuss.", "The bleeding has mostly stopped."]
+  },
+  "riko": {
+    "weak": ["Dead center, baby!", "Saw that gap a mile away.", "Cha-ching! Free shot!"],
+    "kill": ["Aaand stay down.", "Tell your friends.", "Next contestant, please!"],
+    "hurt": ["Ow ow OW. Okay. Rude.", "Hey! The jacket's vintage!", "I felt that one in my teeth..."],
+    "probe": ["Lemme see your hand. Knew it — bluffing.", "Scouted. You're an open book."],
+    "switch_in": ["Did someone order fireworks?", "Tag me in, tag me in!"],
+    "victory": ["Easy money.", "Drinks are on Kaede!"],
+    "map": ["I vote whichever path has loot.", "Race you to the next fight.", "My trigger finger's bored."],
+    "map_low": ["I'm fine! Mostly. Like 30% fine.", "Mizuki~? Healing? Please?"]
+  },
+  "tsubaki": {
+    "weak": ["THERE'S the soft spot!", "Felt that crunch? I did!", "Burn through!"],
+    "kill": ["Stay DOWN!", "Who's next?!", "Hah! Barely a warm-up!"],
+    "hurt": ["Good hit... my turn.", "Now I'm awake!", "Grr... that one counts."],
+    "probe": ["I smell a trick on this one.", "Something's off with its guard."],
+    "switch_in": ["Finally! Move over!", "Coming through, fists first!"],
+    "victory": ["WOOO! Round two anytime!", "That all they got?"],
+    "map": ["Pick the path with the elite. Trust me.", "My knuckles are itching.", "Less walking, more brawling!"],
+    "map_low": ["It's a flesh wound. It's ALL flesh wounds.", "I've fought worse, half-asleep."]
+  },
+  "mizuki": {
+    "weak": ["The tide finds every crack.", "As the depths willed it.", "Flow where they cannot bend."],
+    "kill": ["Return to stillness.", "The sea takes back its own.", "Hush now."],
+    "hurt": ["Even oceans... bleed.", "The current falters...", "I must not sink here."],
+    "probe": ["I see what you hide beneath.", "The water remembers your true shape."],
+    "switch_in": ["The tide turns with me.", "Breathe. I am here."],
+    "victory": ["The storm passes. We remain.", "Becalmed. All of it."],
+    "map": ["The valley dreams uneasily.", "Listen... the bronze one is breathing.", "We are expected, I think."],
+    "map_low": ["My strength ebbs... it will return.", "Shallow waters. Tread gently."]
+  }
+}

@@ -31,7 +31,14 @@ var pack_picker: OptionButton
 var widgets := {}                 # Combatant -> Control
 var outcome_staged := false       # victory/defeat staging runs once
 var outcome_nodes: Array = []     # stamps/tallies swept on restart
+var deck_header: HBoxContainer    # command deck ownership row
 var _stop_until_ms := 0           # hit-stop guard (real time)
+var _last_cutin_ms := -100000     # cut-in spam gate
+
+const CUTIN_COOLDOWN_MS := 3500
+## Probability a trigger actually fires a cut-in (cooldown still applies).
+const CUTIN_CHANCE := { "weak": 0.4, "kill": 0.75, "hurt": 0.9, "probe": 0.8, "switch_in": 0.65, "victory": 1.0 }
+const CUTIN_EXPR := { "weak": "confident", "kill": "fierce", "hurt": "strained", "probe": "confident", "switch_in": "confident", "victory": "fierce" }
 
 # x = fraction of field width; y = fraction of AVAILABLE height (field height
 # minus the widget's own height), so name/HP labels can never clip under the
@@ -214,6 +221,9 @@ void fragment() {
 	var command := VBoxContainer.new()
 	command.add_theme_constant_override("separation", 6)
 	command_frame.add_child(command)
+	deck_header = HBoxContainer.new()
+	deck_header.add_theme_constant_override("separation", 8)
+	command.add_child(deck_header)
 	action_box = HFlowContainer.new()
 	action_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	action_box.add_theme_constant_override("h_separation", 6)
@@ -361,20 +371,44 @@ func _build_field() -> void:
 		var e: Combatant = battle.enemies[ei]
 		widgets[e] = _combatant_widget(e, "enemy", ei)
 		field_root.add_child(widgets[e])
-	# Bench note, bottom-right corner of the field.
-	var bench_names: Array = []
+	# Bench presence: the reserves stand darkened at the field's right edge,
+	# waiting to be tagged in.
+	var bench_row := HBoxContainer.new()
+	bench_row.name = "_bench"
+	bench_row.add_theme_constant_override("separation", 10)
+	bench_row.alignment = BoxContainer.ALIGNMENT_END
+	bench_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for b in battle.bench:
-		if b != null and b.is_alive():
-			bench_names.append("%s %d/%d" % [b.display_name, b.hp, b.max_hp])
-	if not bench_names.is_empty():
-		var bench_l := Label.new()
-		bench_l.name = "_bench"
-		bench_l.text = "bench: " + ", ".join(bench_names)
-		bench_l.add_theme_color_override("font_color", Color("#5d6275"))
-		bench_l.add_theme_font_size_override("font_size", 12)
-		bench_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		field_root.add_child(bench_l)
-		bench_l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 8)
+		if b == null or not b.is_alive():
+			continue
+		var chip := VBoxContainer.new()
+		chip.alignment = BoxContainer.ALIGNMENT_END
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sp := "res://assets/sprites/girls/%s.png" % b.id
+		if ResourceLoader.exists(sp):
+			var tr := TextureRect.new()
+			tr.texture = load(sp)
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			tr.custom_minimum_size = Vector2(54, 50)
+			tr.modulate = Color(0.45, 0.45, 0.55)
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			chip.add_child(tr)
+		var bl := Label.new()
+		bl.text = "%s %d/%d" % [b.display_name, b.hp, b.max_hp]
+		bl.add_theme_font_size_override("font_size", 10)
+		bl.add_theme_color_override("font_color", Color("#7f8597"))
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		bl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_child(bl)
+		bench_row.add_child(chip)
+	if bench_row.get_child_count() > 0:
+		field_root.add_child(bench_row)
+		bench_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 6)
+		bench_row.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	else:
+		bench_row.free()
 	_layout_field()
 
 
@@ -596,12 +630,124 @@ func _layout_field() -> void:
 		var y: float = 6.0 + a.y * maxf(0.0, fs.y - wh - 12.0)
 		w.position = Vector2(x, y)
 		if c.is_alive():
-			var base_y: float = w.position.y
-			var half := 0.85 + randf() * 0.5
-			var bob := w.create_tween().set_loops()
-			bob.tween_property(w, "position:y", base_y - 3.0, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			bob.tween_property(w, "position:y", base_y + 3.0, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			w.set_meta("bob", bob)
+			_start_idle(c, w)
+
+
+## Per-girl idle behavior — fidgeting (and stillness) as characterization.
+func _start_idle(c: Combatant, w: Control) -> void:
+	var base_y: float = w.position.y
+	var amp := 3.0
+	var half := 0.85 + randf() * 0.5
+	if c.side == "party":
+		match c.id:
+			"kaede":
+				return  # Kaede does not fidget. Dead still.
+			"riko":
+				amp = 2.0
+				half = 0.42
+				# Occasional cocky little tilt.
+				w.pivot_offset = Vector2(w.size.x * 0.5, w.size.y)
+				var flick := w.create_tween().set_loops()
+				flick.tween_interval(5.0 + randf() * 4.0)
+				flick.tween_property(w, "rotation_degrees", -5.0, 0.09)
+				flick.tween_property(w, "rotation_degrees", 0.0, 0.16)
+			"tsubaki":
+				# Boxer footwork: quick heavy bounce + a slow stance rock.
+				amp = 5.0
+				half = 0.55
+				w.pivot_offset = Vector2(w.size.x * 0.5, w.size.y)
+				var rock := w.create_tween().set_loops()
+				rock.tween_property(w, "rotation_degrees", -1.6, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+				rock.tween_property(w, "rotation_degrees", 1.6, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			"mizuki":
+				amp = 3.5
+				half = 1.7
+	var bob := w.create_tween().set_loops()
+	bob.tween_property(w, "position:y", base_y - amp, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	bob.tween_property(w, "position:y", base_y + amp, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	w.set_meta("bob", bob)
+
+
+## ---- Cut-ins (the cast speaks) ------------------------------------------------------
+
+## Cobalt-Core-style portrait slam: the girl's bust slides in from the right
+## edge with a one-liner. Gated by cooldown + per-trigger probability so it
+## punctuates fights instead of narrating them.
+func _try_cutin(girl_id: String, category: String) -> void:
+	var now := Time.get_ticks_msec()
+	if now - _last_cutin_ms < CUTIN_COOLDOWN_MS:
+		return
+	if randf() > float(CUTIN_CHANCE.get(category, 0.5)):
+		return
+	var lines: Array = (db.barks.get(girl_id, {}) as Dictionary).get(category, [])
+	if lines.is_empty():
+		return
+	var expr: String = CUTIN_EXPR.get(category, "confident")
+	var bust_path := "res://assets/cutins/%s_%s.png" % [girl_id, expr]
+	if not ResourceLoader.exists(bust_path):
+		return
+	_last_cutin_ms = now
+	var girl: Dictionary = db.girls.get(girl_id, {})
+	var tint := Color(db.element_colors.get(girl.get("element", "neutral"), "#444a66"))
+
+	var panel := Control.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.z_index = 40
+	battlefield.add_child(panel)
+	var ph := 150.0
+	panel.position = Vector2(battlefield.size.x + 40.0, battlefield.size.y * 0.30)
+
+	var backing := ColorRect.new()
+	backing.color = Color(tint.r * 0.35, tint.g * 0.35, tint.b * 0.35, 0.88)
+	backing.size = Vector2(420, ph)
+	backing.rotation_degrees = -2.0
+	backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(backing)
+	var stripe := ColorRect.new()
+	stripe.color = tint
+	stripe.size = Vector2(420, 4)
+	stripe.position = Vector2(0, ph)
+	stripe.rotation_degrees = -2.0
+	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(stripe)
+
+	var bust := TextureRect.new()
+	bust.texture = load(bust_path)
+	bust.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bust.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	bust.custom_minimum_size = Vector2(150, 185)
+	bust.size = Vector2(150, 185)
+	bust.position = Vector2(6, ph - 185.0)
+	bust.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(bust)
+
+	var name_l := Label.new()
+	name_l.text = girl.get("name", girl_id).to_upper()
+	name_l.add_theme_font_size_override("font_size", 15)
+	name_l.add_theme_color_override("font_color", tint.lightened(0.35))
+	name_l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_l.add_theme_constant_override("outline_size", 4)
+	name_l.position = Vector2(166, ph * 0.28)
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(name_l)
+	var line_l := Label.new()
+	line_l.text = "\"%s\"" % lines[randi() % lines.size()]
+	line_l.add_theme_font_size_override("font_size", 14)
+	line_l.add_theme_color_override("font_color", Color("#e8eaf2"))
+	line_l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	line_l.add_theme_constant_override("outline_size", 4)
+	line_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line_l.custom_minimum_size = Vector2(235, 0)
+	line_l.position = Vector2(166, ph * 0.28 + 22)
+	line_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(line_l)
+
+	var dest_x := battlefield.size.x - 442.0
+	var tw := create_tween()
+	tw.tween_property(panel, "position:x", dest_x, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(1.45)
+	tw.tween_property(panel, "position:x", battlefield.size.x + 60.0, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(panel.queue_free)
 
 
 ## ---- The Icon Forge ---------------------------------------------------------------
@@ -713,6 +859,17 @@ func _fx_hit(ev: Dictionary) -> void:
 		fall.tween_property(w, "modulate:a", 0.25, 0.5)
 		fall.tween_property(w, "rotation_degrees", -10.0 if target.side == "enemy" else 10.0, 0.5)
 	_damage_popup(w, ev)
+	# Cast barks: kill > hurt > weak (cooldown gate makes the first call win).
+	if actor != null and actor.side == "party":
+		if not target.is_alive():
+			_try_cutin(actor.id, "kill")
+		elif ev["tier"] == Rules.Tier.WEAK:
+			_try_cutin(actor.id, "weak")
+	if target.side == "party" and target.is_alive() and ev["amount"] > 0:
+		var before_frac := float(target.hp + int(ev["amount"])) / target.max_hp
+		var after_frac := float(target.hp) / target.max_hp
+		if before_frac > 0.35 and after_frac <= 0.35:
+			_try_cutin(target.id, "hurt")
 
 
 ## Numbers with mass: spawn oversized, overshoot-shrink, then gravity-arc off.
@@ -834,6 +991,8 @@ func _fx_switch(ev: Dictionary) -> void:
 	var slide := create_tween()
 	slide.tween_property(w, "position:x", dest_x, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	slide.parallel().tween_property(w, "modulate", Color(1, 1, 1), 0.45)
+	if incoming.side == "party":
+		_try_cutin(incoming.id, "switch_in")
 
 
 func _float_popup(popup: Label, pos: Vector2, dur := 0.7) -> void:
@@ -923,6 +1082,14 @@ func _stage_outcome() -> void:
 				tally.text = "weak hits %d   rounds %d   switches %d" % [roundi(wk * t), roundi(rd * t), roundi(sw * t)]
 		var count := create_tween()
 		count.tween_method(tick, 0.0, 1.0, 0.9).set_delay(0.25)
+		var living := battle.party.filter(func(c): return c != null and c.is_alive())
+		if not living.is_empty():
+			var speaker: Combatant = living[randi() % living.size()]
+			var vt := create_tween()
+			vt.tween_interval(0.7)
+			vt.tween_callback(func():
+				_last_cutin_ms = -100000  # victory line always gets through
+				_try_cutin(speaker.id, "victory"))
 	else:
 		var dip := create_tween()
 		dip.tween_property(field_root, "modulate", Color(0.40, 0.38, 0.46), 1.2)
@@ -968,9 +1135,47 @@ func _stamp_label(text: String, color: Color, size: int) -> Label:
 
 ## ---- Command deck ----------------------------------------------------------------
 
+## The command deck belongs to whoever is selected: her portrait, her weapon,
+## her element color.
+func _render_deck_header() -> void:
+	_clear(deck_header)
+	if battle.phase == "over":
+		return
+	if selected_slot < 0 or battle.party[selected_slot] == null:
+		var idle_l := Label.new()
+		idle_l.text = "COMMAND"
+		idle_l.add_theme_font_size_override("font_size", 14)
+		idle_l.add_theme_color_override("font_color", Color("#5d6275"))
+		deck_header.add_child(idle_l)
+		return
+	var girl: Combatant = battle.party[selected_slot]
+	var g: Dictionary = db.girls[girl.id]
+	var tint := Color(db.element_colors.get(girl.element, "#c8ccd8"))
+	var pp := "res://assets/portraits/%s.png" % girl.id
+	if ResourceLoader.exists(pp):
+		var pt := TextureRect.new()
+		pt.texture = load(pp)
+		pt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pt.custom_minimum_size = Vector2(34, 34)
+		deck_header.add_child(pt)
+	var h := Label.new()
+	h.text = "%s — %s" % [girl.display_name.to_upper(), str(g.get("weapon", "")).to_upper().replace("_", " ")]
+	h.add_theme_font_size_override("font_size", 15)
+	h.add_theme_color_override("font_color", tint)
+	deck_header.add_child(h)
+	var strip := ColorRect.new()
+	strip.color = tint
+	strip.custom_minimum_size = Vector2(0, 3)
+	strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	strip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	deck_header.add_child(strip)
+
+
 func _render_actions() -> void:
 	_clear(action_box)
 	_clear(context_box)
+	_render_deck_header()
 	if battle.phase == "over":
 		if run_mode:
 			_render_run_outcome()
@@ -1362,6 +1567,10 @@ func _do_action(action: Dictionary) -> void:
 			revealed_after += 1
 	if revealed_after > revealed_before:
 		_rim_flash(UITheme.PURPLE, 0.7)
+		if action.get("type", "") == "probe":
+			var prober: Combatant = battle.party[int(action["actor"])]
+			if prober != null:
+				_try_cutin(prober.id, "probe")
 	if battle.phase != "over":
 		if selected_slot >= 0:
 			var g: Combatant = battle.party[selected_slot]

@@ -120,6 +120,8 @@ func _build() -> void:
 	status_label.add_theme_color_override("font_color", Color("#8d93a5"))
 	main.add_child(status_label)
 
+	_maybe_map_bark(roster_row)
+
 	match run.state:
 		"event":
 			_build_event_panel()
@@ -127,6 +129,48 @@ func _build() -> void:
 			_build_over_panel()
 		_:
 			_build_map()
+
+
+## A rotating girl gets a word in on the map — wounded girls complain first.
+func _maybe_map_bark(roster_row: HBoxContainer) -> void:
+	if run.state != "map" or randf() > 0.65:
+		return
+	var wounded: Array = []
+	var living: Array = []
+	for i in run.roster.size():
+		var c: Combatant = run.roster[i]
+		if not c.is_alive():
+			continue
+		living.append(i)
+		if float(c.hp) / c.max_hp < 0.35:
+			wounded.append(i)
+	if living.is_empty():
+		return
+	var idx: int
+	var category: String
+	if not wounded.is_empty() and randf() < 0.7:
+		idx = wounded[randi() % wounded.size()]
+		category = "map_low"
+	else:
+		idx = living[randi() % living.size()]
+		category = "map"
+	var girl: Combatant = run.roster[idx]
+	var lines: Array = (Game.db.barks.get(girl.id, {}) as Dictionary).get(category, [])
+	if lines.is_empty() or idx >= roster_row.get_child_count():
+		return
+	var cell: HBoxContainer = roster_row.get_child(idx)
+	var bubble := PanelContainer.new()
+	bubble.add_theme_stylebox_override("panel", UITheme.panel_box())
+	cell.add_child(bubble)
+	var bl := Label.new()
+	bl.text = "\"%s\"" % lines[randi() % lines.size()]
+	bl.add_theme_font_size_override("font_size", 12)
+	bl.add_theme_color_override("font_color", Color(Game.db.element_colors.get(girl.element, "#c8ccd8")).lightened(0.25))
+	bubble.add_child(bl)
+	var tw := bubble.create_tween()
+	tw.tween_interval(7.0)
+	tw.tween_property(bubble, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(bubble.queue_free)
 
 
 func _build_map() -> void:
