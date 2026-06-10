@@ -2,7 +2,6 @@
 .godot/
 *.translation
 export.cfg
-export_presets.cfg
 
 # Generated art staging (curated picks get committed explicitly)
 art_staging/
