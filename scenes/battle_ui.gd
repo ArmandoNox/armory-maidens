@@ -26,8 +26,11 @@ var detail_box: VBoxContainer
 var pack_picker: OptionButton
 var widgets := {}                 # Combatant -> Control
 
-const PARTY_ANCHORS := [Vector2(0.64, 0.10), Vector2(0.72, 0.36), Vector2(0.80, 0.62)]
-const ENEMY_ANCHORS := [Vector2(0.22, 0.10), Vector2(0.13, 0.36), Vector2(0.05, 0.62)]
+# x = fraction of field width; y = fraction of AVAILABLE height (field height
+# minus the widget's own height), so name/HP labels can never clip under the
+# bottom menu no matter how the panels resize.
+const PARTY_ANCHORS := [Vector2(0.64, 0.04), Vector2(0.72, 0.50), Vector2(0.80, 0.96)]
+const ENEMY_ANCHORS := [Vector2(0.22, 0.04), Vector2(0.13, 0.50), Vector2(0.05, 0.96)]
 const SPRITE_H := { "normal": 110.0, "elite": 150.0, "boss": 200.0, "girl": 120.0 }
 
 
@@ -432,8 +435,12 @@ func _layout_field() -> void:
 		var a: Vector2 = anchors[idx % anchors.size()]
 		if w.has_meta("bob"):
 			(w.get_meta("bob") as Tween).kill()
-		w.position = Vector2(a.x * fs.x, a.y * fs.y)
 		w.reset_size()
+		var wh: float = maxf(w.size.y, w.custom_minimum_size.y)
+		var ww: float = maxf(w.size.x, w.custom_minimum_size.x)
+		var x: float = clampf(a.x * fs.x, 4.0, maxf(4.0, fs.x - ww - 4.0))
+		var y: float = 6.0 + a.y * maxf(0.0, fs.y - wh - 12.0)
+		w.position = Vector2(x, y)
 		if c.is_alive():
 			var base_y: float = w.position.y
 			var half := 0.85 + randf() * 0.5
