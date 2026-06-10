@@ -16,6 +16,7 @@ var draft_pick := ""
 
 var top_label: Label
 var battlefield: Control
+var field_bg: TextureRect
 var log_text: RichTextLabel
 var action_box: HFlowContainer
 var context_box: HBoxContainer
@@ -84,14 +85,21 @@ func _build_layout() -> void:
 	field_style.set_corner_radius_all(8)
 	battlefield.add_theme_stylebox_override("panel", field_style)
 	battlefield.resized.connect(_layout_field)
+	battlefield.clip_contents = true
 	main.add_child(battlefield)
 
-	var ground := ColorRect.new()
-	ground.color = Color("#23263a")
-	ground.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	ground.anchor_top = 0.72
-	ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	battlefield.add_child(ground)
+	field_bg = TextureRect.new()
+	field_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	field_bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	field_bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	field_bg.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	field_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	battlefield.add_child(field_bg)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.22)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	battlefield.add_child(shade)
 
 	var bottom := HBoxContainer.new()
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -130,6 +138,13 @@ func _start_battle(pack: String) -> void:
 
 
 func _reset_view() -> void:
+	var bg_name := "field"
+	for e in battle.enemies:
+		if db.enemies[e.id].get("tier", "normal") == "boss":
+			bg_name = "boss"
+	var bg_path := "res://assets/backgrounds/%s.png" % bg_name
+	if ResourceLoader.exists(bg_path):
+		field_bg.texture = load(bg_path)
 	selected_slot = -1
 	pending = ""
 	log_cursor = 0

@@ -13,6 +13,7 @@ const TYPE_COLORS := {
 
 var run: Run
 var main: VBoxContainer
+var root_margin: MarginContainer
 var status_label: Label
 
 
@@ -38,14 +39,28 @@ func _build() -> void:
 	bg.color = Color("#1b1d24")
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	var root := MarginContainer.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	if ResourceLoader.exists("res://assets/backgrounds/map.png"):
+		var bg_tex := TextureRect.new()
+		bg_tex.texture = load("res://assets/backgrounds/map.png")
+		bg_tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		bg_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		bg_tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		bg_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(bg_tex)
+		var shade := ColorRect.new()
+		shade.color = Color(0, 0, 0, 0.52)
+		shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(shade)
+	root_margin = MarginContainer.new()
+	root_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
-		root.add_theme_constant_override(m, 16)
-	add_child(root)
+		root_margin.add_theme_constant_override(m, 16)
+	add_child(root_margin)
 	main = VBoxContainer.new()
 	main.add_theme_constant_override("separation", 8)
-	root.add_child(main)
+	root_margin.add_child(main)
 
 	var top := HBoxContainer.new()
 	main.add_child(top)
@@ -105,7 +120,7 @@ func _build_map() -> void:
 	edges_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	edges_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(edges_overlay)
-	move_child(edges_overlay, 1)  # above bg, below the UI tree
+	move_child(edges_overlay, root_margin.get_index())  # above bg layers, below the UI tree
 	var map_box := VBoxContainer.new()
 	map_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	map_box.add_theme_constant_override("separation", 14)
