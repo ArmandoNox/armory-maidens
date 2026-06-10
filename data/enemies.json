@@ -1,0 +1,105 @@
+{
+  "bramble_pup": {
+    "name": "Bramble Pup",
+    "element": "terra",
+    "archetype": "fleshy",
+    "stats": {
+      "hp": 95,
+      "atk": 16,
+      "def": 8,
+      "spd": 10
+    },
+    "moves": [
+      "em_bite",
+      "em_rock_throw"
+    ],
+    "tier": "normal",
+    "mutation_chance": 0.35
+  },
+  "cinder_imp": {
+    "name": "Cinder Imp",
+    "element": "ember",
+    "archetype": "fleshy",
+    "stats": {
+      "hp": 85,
+      "atk": 17,
+      "def": 7,
+      "spd": 13
+    },
+    "moves": [
+      "em_ember_spit",
+      "em_scratch"
+    ],
+    "tier": "normal",
+    "mutation_chance": 0.35
+  },
+  "rustclad_sentinel": {
+    "name": "Rustclad Sentinel",
+    "element": "volt",
+    "archetype": "armored",
+    "stats": {
+      "hp": 125,
+      "atk": 16,
+      "def": 14,
+      "spd": 6
+    },
+    "moves": [
+      "em_zap",
+      "em_shield_bash"
+    ],
+    "tier": "normal",
+    "mutation_chance": 0.35
+  },
+  "bog_slime": {
+    "name": "Bog Slime",
+    "element": "tide",
+    "archetype": "gelatinous",
+    "stats": {
+      "hp": 110,
+      "atk": 15,
+      "def": 9,
+      "spd": 7
+    },
+    "moves": [
+      "em_bog_burst",
+      "em_slam"
+    ],
+    "tier": "normal",
+    "mutation_chance": 0.35
+  },
+  "hollow_archer": {
+    "name": "Hollow Archer",
+    "element": "gale",
+    "archetype": "skeletal",
+    "stats": {
+      "hp": 90,
+      "atk": 18,
+      "def": 8,
+      "spd": 14
+    },
+    "moves": [
+      "em_arrow",
+      "em_gust"
+    ],
+    "tier": "normal",
+    "mutation_chance": 0.35
+  },
+  "grave_warden": {
+    "name": "Grave Warden",
+    "element": "terra",
+    "archetype": "armored",
+    "stats": {
+      "hp": 240,
+      "atk": 19,
+      "def": 14,
+      "spd": 9
+    },
+    "moves": [
+      "em_rock_throw",
+      "em_shield_bash",
+      "em_slam"
+    ],
+    "tier": "elite",
+    "mutation_chance": 1.0
+  }
+}

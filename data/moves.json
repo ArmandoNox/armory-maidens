@@ -1,0 +1,40 @@
+{
+  "cleave":         { "name": "Cleave",          "element": "neutral", "phys": "slash",  "power": 22, "cooldown": 0, "target": "enemy" },
+  "quake_edge":     { "name": "Quake Edge",      "element": "terra",   "phys": "slash",  "power": 30, "cooldown": 1, "target": "enemy" },
+  "pommel_strike":  { "name": "Pommel Strike",   "element": "neutral", "phys": "blunt",  "power": 24, "cooldown": 1, "target": "enemy", "effect": "sunder" },
+  "bulwark_stance": { "name": "Bulwark Stance",  "element": "neutral", "phys": "blunt",  "power": 0,  "cooldown": 2, "target": "self",  "effect": "guard" },
+  "earthsplitter":  { "name": "Earthsplitter",   "element": "terra",   "phys": "slash",  "power": 42, "cooldown": 3, "target": "enemy" },
+  "iron_resolve":   { "name": "Iron Resolve",    "element": "neutral", "phys": "blunt",  "power": 0,  "cooldown": 3, "target": "self",  "effect": "heal_self_20" },
+
+  "double_tap":     { "name": "Double Tap",      "element": "neutral", "phys": "pierce", "power": 12, "cooldown": 0, "target": "enemy", "hits": 2 },
+  "volt_rounds":    { "name": "Volt Rounds",     "element": "volt",    "phys": "pierce", "power": 16, "cooldown": 1, "target": "enemy", "hits": 2 },
+  "piercing_slug":  { "name": "Piercing Slug",   "element": "neutral", "phys": "pierce", "power": 32, "cooldown": 2, "target": "enemy" },
+  "ricochet":       { "name": "Ricochet",        "element": "volt",    "phys": "pierce", "power": 14, "cooldown": 2, "target": "all_enemies" },
+  "pistol_whip":    { "name": "Pistol Whip",     "element": "neutral", "phys": "blunt",  "power": 20, "cooldown": 1, "target": "enemy" },
+  "snap_focus":     { "name": "Snap Focus",      "element": "neutral", "phys": "pierce", "power": 0,  "cooldown": 3, "target": "self",  "effect": "atk_up" },
+
+  "jab_cross":      { "name": "Jab Cross",       "element": "neutral", "phys": "blunt",  "power": 20, "cooldown": 0, "target": "enemy" },
+  "blazing_fist":   { "name": "Blazing Fist",    "element": "ember",   "phys": "blunt",  "power": 28, "cooldown": 1, "target": "enemy", "effect": "burn" },
+  "skull_crusher":  { "name": "Skull Crusher",   "element": "neutral", "phys": "blunt",  "power": 34, "cooldown": 2, "target": "enemy" },
+  "counter_stance": { "name": "Counter Stance",  "element": "neutral", "phys": "blunt",  "power": 0,  "cooldown": 2, "target": "self",  "effect": "counter" },
+  "meteor_drive":   { "name": "Meteor Drive",    "element": "ember",   "phys": "blunt",  "power": 44, "cooldown": 3, "target": "enemy" },
+  "inner_flame":    { "name": "Inner Flame",     "element": "neutral", "phys": "blunt",  "power": 0,  "cooldown": 3, "target": "self",  "effect": "atk_up" },
+
+  "wave_bolt":      { "name": "Wave Bolt",       "element": "tide",    "phys": "blunt",  "power": 18, "cooldown": 0, "target": "enemy" },
+  "tidal_crush":    { "name": "Tidal Crush",     "element": "tide",    "phys": "blunt",  "power": 26, "cooldown": 1, "target": "enemy" },
+  "healing_rain":   { "name": "Healing Rain",    "element": "tide",    "phys": "blunt",  "power": 0,  "cooldown": 2, "target": "party", "effect": "heal_party_18" },
+  "undertow":       { "name": "Undertow",        "element": "tide",    "phys": "blunt",  "power": 16, "cooldown": 2, "target": "all_enemies" },
+  "renewal":        { "name": "Renewal",         "element": "tide",    "phys": "blunt",  "power": 0,  "cooldown": 1, "target": "ally",  "effect": "heal_one_35" },
+  "mist_veil":      { "name": "Mist Veil",       "element": "tide",    "phys": "blunt",  "power": 0,  "cooldown": 3, "target": "party", "effect": "guard_party" },
+
+  "em_bite":        { "name": "Bite",            "element": "neutral", "phys": "pierce", "power": 20, "cooldown": 0, "target": "enemy" },
+  "em_scratch":     { "name": "Scratch",         "element": "neutral", "phys": "slash",  "power": 18, "cooldown": 0, "target": "enemy" },
+  "em_slam":        { "name": "Slam",            "element": "neutral", "phys": "blunt",  "power": 24, "cooldown": 1, "target": "enemy" },
+  "em_ember_spit":  { "name": "Ember Spit",      "element": "ember",   "phys": "pierce", "power": 22, "cooldown": 1, "target": "enemy" },
+  "em_gust":        { "name": "Gust",            "element": "gale",    "phys": "slash",  "power": 20, "cooldown": 1, "target": "enemy" },
+  "em_rock_throw":  { "name": "Rock Throw",      "element": "terra",   "phys": "blunt",  "power": 22, "cooldown": 1, "target": "enemy" },
+  "em_zap":         { "name": "Zap",             "element": "volt",    "phys": "pierce", "power": 20, "cooldown": 1, "target": "enemy" },
+  "em_bog_burst":   { "name": "Bog Burst",       "element": "tide",    "phys": "blunt",  "power": 22, "cooldown": 1, "target": "enemy" },
+  "em_arrow":       { "name": "Hollow Arrow",    "element": "gale",    "phys": "pierce", "power": 24, "cooldown": 1, "target": "enemy" },
+  "em_shield_bash": { "name": "Shield Bash",     "element": "neutral", "phys": "blunt",  "power": 26, "cooldown": 1, "target": "enemy" }
+}

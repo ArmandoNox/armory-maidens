@@ -1,0 +1,46 @@
+{
+  "kaede": {
+    "name": "Kaede",
+    "weapon": "greatsword",
+    "element": "terra",
+    "archetype": "armored",
+    "stats": { "hp": 120, "atk": 16, "def": 16, "spd": 8 },
+    "trigger": "bulwark",
+    "trigger_desc": "Switch-in: gains Guard (halves the next hit she takes).",
+    "basic": "cleave",
+    "moves": ["quake_edge", "pommel_strike", "bulwark_stance", "earthsplitter", "iron_resolve"]
+  },
+  "riko": {
+    "name": "Riko",
+    "weapon": "twin_pistols",
+    "element": "volt",
+    "archetype": "fleshy",
+    "stats": { "hp": 85, "atk": 14, "def": 9, "spd": 16 },
+    "trigger": "opening_jab",
+    "trigger_desc": "Switch-in: free low-power snap shot at a random enemy.",
+    "basic": "double_tap",
+    "moves": ["volt_rounds", "piercing_slug", "ricochet", "pistol_whip", "snap_focus"]
+  },
+  "tsubaki": {
+    "name": "Tsubaki",
+    "weapon": "gauntlets",
+    "element": "ember",
+    "archetype": "fleshy",
+    "stats": { "hp": 100, "atk": 17, "def": 11, "spd": 12 },
+    "trigger": "counter_stance",
+    "trigger_desc": "Switch-in: gains Counter (retaliates with her basic when hit this round).",
+    "basic": "jab_cross",
+    "moves": ["blazing_fist", "skull_crusher", "counter_stance", "meteor_drive", "inner_flame"]
+  },
+  "mizuki": {
+    "name": "Mizuki",
+    "weapon": "staff",
+    "element": "tide",
+    "archetype": "fleshy",
+    "stats": { "hp": 90, "atk": 12, "def": 12, "spd": 10 },
+    "trigger": "soothing_mist",
+    "trigger_desc": "Switch-in: heals the active party for 12% max HP.",
+    "basic": "wave_bolt",
+    "moves": ["tidal_crush", "healing_rain", "undertow", "renewal", "mist_veil"]
+  }
+}

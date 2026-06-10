@@ -1,0 +1,19 @@
+{
+  "order": ["ember", "gale", "terra", "volt", "tide", "neutral"],
+  "colors": {
+    "ember": "#e2543e",
+    "gale": "#6abf6a",
+    "terra": "#a8804a",
+    "volt": "#e8c84a",
+    "tide": "#4a90d9",
+    "neutral": "#9a9a9a"
+  },
+  "chart": {
+    "ember": { "gale": 1.5, "tide": 0.5, "ember": 0.5 },
+    "gale": { "terra": 1.5, "ember": 0.5, "gale": 0.5 },
+    "terra": { "volt": 1.5, "gale": 0.5, "terra": 0.5 },
+    "volt": { "tide": 1.5, "terra": 0.5, "volt": 0.5 },
+    "tide": { "ember": 1.5, "volt": 0.5, "tide": 0.5 },
+    "neutral": {}
+  }
+}

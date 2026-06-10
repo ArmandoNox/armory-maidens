@@ -1,0 +1,10 @@
+{
+  "types": ["slash", "pierce", "blunt"],
+  "archetypes": {
+    "fleshy":     { "slash": 1.0, "pierce": 1.0, "blunt": 1.0 },
+    "armored":    { "slash": 0.5, "pierce": 1.0, "blunt": 1.5 },
+    "skeletal":   { "slash": 1.0, "pierce": 0.5, "blunt": 1.5 },
+    "gelatinous": { "slash": 1.5, "pierce": 0.5, "blunt": 0.5 },
+    "ethereal":   { "slash": 0.5, "pierce": 0.5, "blunt": 0.5 }
+  }
+}

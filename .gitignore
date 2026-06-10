@@ -1,0 +1,12 @@
+# Godot
+.godot/
+*.translation
+export.cfg
+export_presets.cfg
+
+# Generated art staging (curated picks get committed explicitly)
+art_staging/
+
+# OS
+Thumbs.db
+.DS_Store
