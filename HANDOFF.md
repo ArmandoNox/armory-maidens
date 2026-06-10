@@ -128,10 +128,23 @@ nodes) and drives the UI, the tests, and the simulators IDENTICALLY.
   revive-at-25% on victory, draft offers, events.
 - `src/core/ai.gd` — enemy intents (greedy mult×power, 20% wobble) + sim
   policies (policy_greedy uses believed_mult — information honesty).
-- `src/game.gd` — autoload "Game" (db + current Run). NOTE: autoloads do NOT
+- `src/game.gd` — autoload "Game" (db + current Run + save/settings IO).
+  `checkpoint()` persists the run to `user://run_save.json` at every map-level
+  transition; battles are NEVER persisted (refresh = pre-fight checkpoint, no
+  fight skipping). rng seed/state serialize as STRINGS (JSON float precision).
+  `user://settings.json` holds flags (help_seen). NOTE: autoloads do NOT
   load under `--script`; tools instantiate scenes manually.
-- `scenes/run_map.tscn|run_map_ui.gd` — main scene. Map with drawn edge lines
-  (overlay draw signal), portrait roster bar, event/over panels.
+- `scenes/title.tscn|title_ui.gd` — MAIN SCENE: key art, New Run / Continue
+  (when a save exists) / How to Play / Settings stub. Dev hooks: AM_SHOT env
+  jumps to the map for screenshots; AM_TITLE_SHOT screenshots the title.
+- `src/ui/help_overlay.gd` — HelpOverlay.popup(parent): shared how-to-play
+  overlay (auto-shows on first run-mode battle via settings flag).
+- `assets/icons/icon_*.png` — 48px pixel icons: 6 elements, 3 phys, 5 node
+  types, probe, switch. UITheme.icon()/icon_rect() load them with fallbacks.
+- `scenes/run_map.tscn|run_map_ui.gd` — act map with drawn edge lines
+  (overlay draw signal; gold = paths from your node), node-type icons +
+  tooltips + selectable pulse, portrait roster bar, event panel, over panel
+  with run stats.
 - `scenes/battle.tscn|battle_ui.gd` — side-view battlefield (enemies left /
   party right, anchor-ratio placement), intent bubbles, HP bars, damage
   popups, idle-bob/lunge/shake/flash tweens, JRPG-framed bottom panels,
@@ -146,7 +159,8 @@ nodes) and drives the UI, the tests, and the simulators IDENTICALLY.
 
 ```powershell
 $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Links\godot_console.exe"
-& $godot --path . --headless --script res://tests/run_tests.gd     # 53 tests
+& $godot --path . --headless --import                              # REQUIRED after new class_name scripts or new assets
+& $godot --path . --headless --script res://tests/run_tests.gd     # 66 tests
 & $godot --path . --headless --script res://tools/uicheck.gd       # UI hit-rects + click smoke
 & $godot --path . --headless --script res://tools/simulate.gd -- --n 200 --policy greedy --seed 7
 & $godot --path . --headless --script res://tools/simulate_run.gd -- --n 150 --seed 7
@@ -158,6 +172,11 @@ $env:AM_SHOT="<abs path>.png"; & $godot --path . ; $env:AM_SHOT=""  # map screen
 - **uicheck exists because of a real shipped bug:** Godot Buttons do NOT size
   to children → widgets rendered fine but had ~0 clickable rects. Run uicheck
   after ANY battle-UI change.
+- **`--import` gotcha (cost a debugging cycle 2026-06-10):** a NEW `class_name`
+  script (or new image assets) is invisible to headless `--script` runs and
+  exports until `godot --headless --import` updates the global class cache /
+  imports the assets. Symptom: "Identifier not declared" parse errors on a
+  class that plainly exists, or missing textures in export.
 
 ## 5. Deploy pipeline
 
@@ -175,7 +194,8 @@ the Godot importer scans it. `export_presets.cfg` is tracked (no secrets).
 ## 6. Art generation pipeline (reusable, cost-capped)
 
 - Scripts in WSL home: `~/armory_gen.py` (15 sprites/portraits),
-  `~/armory_bg_gen.py` (16:9 backgrounds). Run with
+  `~/armory_bg_gen.py` (16:9 backgrounds), `~/armory_polish_gen.py` (UI icons
+  48px, attack-pose sprites, title key art). Run with
   `/home/august/august_reed/.venv/bin/python`.
 - Model `gemini-3-pro-image-preview` (Nano Banana Pro) on Vertex, project
   `alpine-inkwell-492314-g1`, location `global`, auth =
@@ -198,7 +218,8 @@ the Godot importer scans it. `export_presets.cfg` is tracked (no secrets).
   enemies-same vs turns-same; Q4 switches/fight; Q5 what card-hunger actually
   was (a-options/b-surprise/c-growth/d-rewards); Q6 fresh-trio appetite.
   Answers gate the D5 identity kits and the D1 escape hatch.
-- Run state is in-memory only — page refresh = new run (save system TBD).
+- ~~Run state is in-memory only~~ SOLVED 2026-06-10: runs auto-save to
+  `user://` at every map-level checkpoint; Continue on the title screen.
 - Operator's Linear team — wait for announcement (D11).
 - Roadmap order after rubric: D5 identity kits + named combos → D6 weapon
   evolution + armory rack visuals → sprite-sheet animations → relics/held
@@ -212,5 +233,12 @@ the Godot importer scans it. `export_presets.cfg` is tracked (no secrets).
 `df006d6` run layer (map/draft/events/boss, 53 tests) →
 `1d913ae` sprites/portraits + FF battlefield + map paths →
 `df443f8` backgrounds →
-`25de683` click-bug fix + animations + JRPG panels + uicheck.
-All four DA rounds and operator rulings happened this day. Art spend ~$2.40.
+`25de683` click-bug fix + animations + JRPG panels + uicheck →
+`7915a84` this handoff file →
+`cba3a48` polish pass (title screen + key art, user:// run saves + Continue,
+framed ability entries w/ pixel icons + believed-tier detail panel + tier
+badges while aiming, HelpOverlay onboarding + icon mint/burn teach popups,
+map node icons/gold paths/pulse/tooltips, attack-pose lunge swap + KO/switch/
+shake/intent-pulse animations, run stats on the over panel; 66 tests).
+All four DA rounds and operator rulings happened this day. Art spend ~$5.40
+total (41 images: 18 greybox-era + 23 polish, all 1K, only 2 re-rolls ever).
