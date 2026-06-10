@@ -59,7 +59,15 @@ static func tier_verdict(tier: int) -> String:
 		_: return "NORMAL"
 
 
-static func panel_box(bg: Color = PANEL_BG, border: Color = BORDER) -> StyleBoxFlat:
+## Every framed panel in the game. Uses the forged-iron 9-slice when the
+## texture exists; falls back to the flat JRPG box so nothing ever breaks.
+static func panel_box(bg: Color = PANEL_BG, border: Color = BORDER) -> StyleBox:
+	if ResourceLoader.exists("res://assets/ui/ui_frame.png"):
+		var tex_sb := StyleBoxTexture.new()
+		tex_sb.texture = load("res://assets/ui/ui_frame.png")
+		tex_sb.set_texture_margin_all(26)
+		tex_sb.set_content_margin_all(14)
+		return tex_sb
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
 	sb.border_color = border

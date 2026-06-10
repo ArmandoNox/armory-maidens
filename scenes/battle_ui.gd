@@ -20,6 +20,7 @@ var battlefield: Control
 var field_root: Control           # shake/zoom target: bg + widgets + popups live here
 var field_bg: TextureRect
 var rim: Panel                    # screen-edge tier flash
+var forge_box: HBoxContainer      # the Icon Forge: physical action diamonds
 var ticker_box: VBoxContainer     # 3-line fading combat ticker on the field
 var log_overlay: Control          # full history, hidden behind the Log button
 var log_text: RichTextLabel
@@ -172,6 +173,15 @@ void fragment() {
 	rim.modulate.a = 0.0
 	battlefield.add_child(rim)
 
+	# The Icon Forge: the press-turn economy as physical diamonds in a rack.
+	forge_box = HBoxContainer.new()
+	forge_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	forge_box.add_theme_constant_override("separation", 6)
+	battlefield.add_child(forge_box)
+	forge_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	forge_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	forge_box.position.y = 10
+
 	# Two-line fading ticker replaces the old log panel; history lives in the overlay.
 	ticker_box = VBoxContainer.new()
 	ticker_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -285,10 +295,8 @@ func _refresh() -> void:
 		icons_label.text = ""
 	else:
 		top_label.text = "Round %d" % battle.round_num
-		var icons_str := ""
-		for i in battle.icons:
-			icons_str += "◆ "
-		icons_label.text = icons_str.strip_edges()
+		icons_label.text = ""
+	_build_forge()
 	_build_field()
 	_drain_events()
 	if battle.phase == "over" and not outcome_staged:
@@ -596,6 +604,41 @@ func _layout_field() -> void:
 			w.set_meta("bob", bob)
 
 
+## ---- The Icon Forge ---------------------------------------------------------------
+
+func _build_forge() -> void:
+	for ch in forge_box.get_children():
+		ch.queue_free()
+		forge_box.remove_child(ch)
+	if battle.phase == "over":
+		return
+	for i in battle.icons:
+		forge_box.add_child(_forge_diamond())
+	forge_box.reset_size()
+
+
+## A forged-metal action diamond (rotated square, gold face, dark edge).
+func _forge_diamond(face := Color("#ffd24a")) -> Control:
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(22, 22)
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var edge := ColorRect.new()
+	edge.color = Color("#6a5012")
+	edge.size = Vector2(16, 16)
+	edge.position = Vector2(11, -1)
+	edge.rotation_degrees = 45
+	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(edge)
+	var d := ColorRect.new()
+	d.color = face
+	d.size = Vector2(12, 12)
+	d.position = Vector2(11, 2)
+	d.rotation_degrees = 45
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(d)
+	return slot
+
+
 ## ---- FX ------------------------------------------------------------------------
 
 func _drain_events() -> void:
@@ -726,20 +769,57 @@ func _fx_heal(ev: Dictionary) -> void:
 	_float_popup(popup, w.position + Vector2(randf_range(20, 70), -6))
 
 
-## Teaching popup for the icon economy: minted or burned.
+## The icon economy made physical: a mint flies a molten diamond from the
+## striker to the forge rack; a burn cracks diamonds off the rack as shards.
 func _fx_icon(ev: Dictionary) -> void:
 	var actor: Combatant = ev.get("actor")
 	var pos := Vector2(battlefield.size.x * 0.42, battlefield.size.y * 0.12)
 	if actor != null and widgets.has(actor):
 		pos = (widgets[actor] as Control).position + Vector2(0, -26)
+	var rack_pos: Vector2 = forge_box.position + Vector2(forge_box.size.x * 0.5, 10.0)
 	var popup := Label.new()
-	popup.add_theme_font_size_override("font_size", 18)
+	popup.add_theme_font_size_override("font_size", 17)
+	popup.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	popup.add_theme_constant_override("outline_size", 4)
 	if int(ev["amount"]) > 0:
-		popup.text = "WEAK — bonus icon ◆"
+		popup.text = "WEAK — icon refunded"
 		popup.add_theme_color_override("font_color", UITheme.GOLD)
+		# Molten diamond flies from the striker's position into the rack.
+		var fly := _forge_diamond(Color("#ffe9a0"))
+		fly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		field_root.add_child(fly)
+		fly.position = pos + Vector2(30, 20)
+		fly.scale = Vector2(1.6, 1.6)
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(fly, "position", rack_pos, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_property(fly, "scale", Vector2.ONE, 0.45)
+		tw.chain().tween_callback(func():
+			if is_instance_valid(fly):
+				fly.queue_free()
+			if is_instance_valid(forge_box):
+				var fl := create_tween()
+				fl.tween_property(forge_box, "modulate", Color(1.8, 1.6, 0.9), 0.08)
+				fl.tween_property(forge_box, "modulate", Color(1, 1, 1), 0.3))
 	else:
-		popup.text = "RESISTED — extra icon burned"
+		popup.text = "RESISTED — icons burned"
 		popup.add_theme_color_override("font_color", UITheme.GREY)
+		# Two diamonds crack off the rack and fall as shards.
+		for i in 2:
+			var shard := _forge_diamond(Color("#5a5e75"))
+			shard.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			field_root.add_child(shard)
+			shard.position = rack_pos + Vector2(i * 14.0 - 7.0, 0)
+			var st := create_tween()
+			st.set_parallel(true)
+			st.tween_property(shard, "position:y", shard.position.y + 70.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			st.tween_property(shard, "position:x", shard.position.x + randf_range(-18.0, 18.0), 0.6)
+			st.tween_property(shard, "rotation_degrees", randf_range(-120.0, 120.0), 0.6)
+			st.tween_property(shard, "modulate:a", 0.0, 0.6)
+			st.chain().tween_callback(shard.queue_free)
+		var rfl := create_tween()
+		rfl.tween_property(forge_box, "modulate", Color(0.6, 0.6, 0.7), 0.08)
+		rfl.tween_property(forge_box, "modulate", Color(1, 1, 1), 0.35)
 	_float_popup(popup, pos, 1.0)
 
 
