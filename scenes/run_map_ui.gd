@@ -65,14 +65,25 @@ func _build() -> void:
 	top.add_child(new_run)
 
 	var roster_row := HBoxContainer.new()
-	roster_row.add_theme_constant_override("separation", 16)
+	roster_row.add_theme_constant_override("separation", 20)
 	main.add_child(roster_row)
 	for c in run.roster:
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 8)
+		roster_row.add_child(cell)
+		var portrait_path := "res://assets/portraits/%s.png" % c.id
+		if ResourceLoader.exists(portrait_path):
+			var pt := TextureRect.new()
+			pt.texture = load(portrait_path)
+			pt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			pt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			pt.custom_minimum_size = Vector2(52, 52)
+			cell.add_child(pt)
 		var l := Label.new()
-		l.text = "%s  %d/%d" % [c.display_name, c.hp, c.max_hp]
+		l.text = "%s\n%d/%d" % [c.display_name, c.hp, c.max_hp]
 		l.add_theme_color_override("font_color",
 			Color("#e2543e") if c.hp < c.max_hp * 0.35 else Color("#c8ccd8"))
-		roster_row.add_child(l)
+		cell.add_child(l)
 
 	status_label = Label.new()
 	status_label.add_theme_color_override("font_color", Color("#8d93a5"))
@@ -90,15 +101,23 @@ func _build() -> void:
 func _build_map() -> void:
 	status_label.text = "Choose your path. (%d fights won)" % run.fights_won
 	var selectable := run.selectable_nodes()
+	var edges_overlay := Control.new()
+	edges_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	edges_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(edges_overlay)
+	move_child(edges_overlay, 1)  # above bg, below the UI tree
 	var map_box := VBoxContainer.new()
 	map_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	map_box.add_theme_constant_override("separation", 10)
+	map_box.add_theme_constant_override("separation", 14)
 	map_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	main.add_child(map_box)
+	var node_buttons: Array = []
+	for f in run.map.size():
+		node_buttons.append([])
 	for f in range(run.map.size() - 1, -1, -1):
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		row.add_theme_constant_override("separation", 24)
+		row.add_theme_constant_override("separation", 28)
 		map_box.add_child(row)
 		for i in run.map[f].size():
 			var node: Dictionary = run.map[f][i]
@@ -120,6 +139,29 @@ func _build_map() -> void:
 				var ii: int = i
 				btn.pressed.connect(func(): _enter(ff, ii))
 			row.add_child(btn)
+			node_buttons[f].append(btn)
+	_draw_edges(edges_overlay, node_buttons)
+
+
+func _draw_edges(overlay: Control, node_buttons: Array) -> void:
+	await get_tree().process_frame
+	if not is_instance_valid(overlay):
+		return
+	overlay.draw.connect(func():
+		for f in range(0, node_buttons.size() - 1):
+			for i in node_buttons[f].size():
+				var from_btn: Button = node_buttons[f][i]
+				for j in run.map[f][i]["edges"]:
+					if j >= node_buttons[f + 1].size():
+						continue
+					var to_btn: Button = node_buttons[f + 1][j]
+					var p1: Vector2 = from_btn.get_global_rect().get_center() - overlay.global_position + Vector2(0, -from_btn.size.y * 0.5)
+					var p2: Vector2 = to_btn.get_global_rect().get_center() - overlay.global_position + Vector2(0, to_btn.size.y * 0.5)
+					var col := Color("#3a3f55")
+					if f == run.cur_floor and i == run.cur_index:
+						col = Color("#8d93a5")
+					overlay.draw_line(p1, p2, col, 2.0))
+	overlay.queue_redraw()
 
 
 func _enter(f: int, i: int) -> void:

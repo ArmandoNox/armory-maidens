@@ -25,6 +25,7 @@ var phase := "player"        # "player" | "over"
 var result := ""             # "" | "victory" | "defeat"
 var intents: Array = []      # [{enemy: int, move: String, slot: int}]
 var log: Array = []
+var events: Array = []       # structured FX feed for the UI: {kind, target, amount, tier}
 
 
 static func create(p_db: DataDB, girl_ids: Array, enemy_ids: Array, seed_val: int) -> Battle:
@@ -178,6 +179,7 @@ func _resolve_hits(attacker: Combatant, targets: Array, mv: Dictionary) -> int:
 				break
 			total += target.take_damage(Rules.damage(int(mv["power"]), attacker.eff_atk(), target.eff_def(), mult))
 		var tier := Rules.tier_of(mult)
+		events.append({ "kind": "hit", "target": target, "amount": total, "tier": tier })
 		_log("%s uses %s on %s — %d dmg [%s]." % [attacker.display_name, mv["name"], target.display_name, total, Rules.tier_name(tier)])
 		if mv.has("effect") and target.is_alive():
 			_apply_effect(attacker, target, mv)
@@ -188,6 +190,7 @@ func _resolve_hits(attacker: Combatant, targets: Array, mv: Dictionary) -> int:
 			var bmv: Dictionary = db.moves[target.basic]
 			var cmult := Rules.combined_mult(db, bmv["element"], bmv["phys"], attacker)
 			var cdmg := attacker.take_damage(Rules.damage(int(bmv["power"]), target.eff_atk(), attacker.eff_def(), cmult))
+			events.append({ "kind": "hit", "target": attacker, "amount": cdmg, "tier": Rules.tier_of(cmult) })
 			_log("%s counters for %d dmg!" % [target.display_name, cdmg])
 	var best_tier := Rules.tier_of(best_mult)
 	if best_tier == Rules.Tier.WEAK and attacker.side == "party" and bonus_minted < MAX_BONUS_PER_ROUND:
@@ -221,11 +224,11 @@ func _apply_effect(source: Combatant, target: Combatant, mv: Dictionary) -> void
 			target.statuses["atk_up"] = 3
 			_log("%s's attack rises." % target.display_name)
 		"heal_self_20":
-			_log("%s recovers %d HP." % [target.display_name, target.heal(roundi(target.max_hp * 0.20))])
+			_heal_event(target, target.heal(roundi(target.max_hp * 0.20)))
 		"heal_one_35":
-			_log("%s recovers %d HP." % [target.display_name, target.heal(roundi(target.max_hp * 0.35))])
+			_heal_event(target, target.heal(roundi(target.max_hp * 0.35)))
 		"heal_party_18":
-			_log("%s recovers %d HP." % [target.display_name, target.heal(roundi(target.max_hp * 0.18))])
+			_heal_event(target, target.heal(roundi(target.max_hp * 0.18)))
 		"":
 			pass
 
@@ -352,6 +355,7 @@ func _enemy_execute(e: Combatant, move_id: String, slot: int) -> int:
 	var mult := Rules.combined_mult(db, mv["element"], mv["phys"], target)
 	var dmg := target.take_damage(Rules.damage(int(mv["power"]), e.eff_atk(), target.eff_def(), mult))
 	var tier := Rules.tier_of(mult)
+	events.append({ "kind": "hit", "target": target, "amount": dmg, "tier": tier })
 	_log("%s uses %s on %s — %d dmg [%s]." % [e.display_name, mv["name"], target.display_name, dmg, Rules.tier_name(tier)])
 	if mv.has("effect") and target.is_alive():
 		_apply_effect(e, target, mv)
@@ -378,6 +382,7 @@ func _enemy_execute_aoe(e: Combatant, mv: Dictionary) -> int:
 		var mult := Rules.combined_mult(db, mv["element"], mv["phys"], target)
 		best_mult = maxf(best_mult, mult)
 		var dmg: int = target.take_damage(Rules.damage(int(mv["power"]), e.eff_atk(), target.eff_def(), mult))
+		events.append({ "kind": "hit", "target": target, "amount": dmg, "tier": Rules.tier_of(mult) })
 		_log("%s's %s hits %s — %d dmg [%s]." % [e.display_name, mv["name"], target.display_name, dmg, Rules.tier_name(Rules.tier_of(mult))])
 		if not target.is_alive():
 			_log("%s falls!" % target.display_name)
@@ -429,6 +434,11 @@ func _all_living() -> Array:
 	out.append_array(_living(bench))
 	out.append_array(_living(enemies))
 	return out
+
+
+func _heal_event(target: Combatant, amount: int) -> void:
+	events.append({ "kind": "heal", "target": target, "amount": amount, "tier": Rules.Tier.NORMAL })
+	_log("%s recovers %d HP." % [target.display_name, amount])
 
 
 func _log(line: String) -> void:

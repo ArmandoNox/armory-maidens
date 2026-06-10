@@ -1,7 +1,8 @@
 extends Control
-## Greybox battle UI — rectangles and labels only, built entirely in code.
-## Runs in two modes: as part of a Run (entered from the map; victory leads to
-## the armory draft) or standalone with the encounter picker (direct launch).
+## Classic side-view battlefield: enemies stage left, party stage right,
+## floating damage numbers, intent bubbles, armory draft on victory.
+## Sprites load from res://assets/sprites/ when present; element-colored
+## silhouettes otherwise. Two modes: run (from the map) or standalone picker.
 
 var db: DataDB
 var battle: Battle
@@ -9,19 +10,21 @@ var run_mode := false
 var selected_slot := -1
 var pending: String = ""          # "" | move_id | "ally:<move_id>" | "probe"
 var log_cursor := 0
-var battle_resolved := false      # run-mode: on_battle_finished() called
-var draft_pick := ""              # run-mode: offer chosen, awaiting replace slot
+var event_cursor := 0
+var battle_resolved := false
+var draft_pick := ""
 
 var top_label: Label
-var party_box: VBoxContainer
-var bench_box: VBoxContainer
-var enemy_box: VBoxContainer
-var action_box: HBoxContainer
-var context_box: HBoxContainer
+var battlefield: Control
 var log_text: RichTextLabel
+var action_box: HFlowContainer
+var context_box: HBoxContainer
 var pack_picker: OptionButton
+var widgets := {}                 # Combatant -> Control
 
-const PANEL_W := 320
+const PARTY_ANCHORS := [Vector2(0.64, 0.10), Vector2(0.72, 0.36), Vector2(0.80, 0.62)]
+const ENEMY_ANCHORS := [Vector2(0.22, 0.10), Vector2(0.13, 0.36), Vector2(0.05, 0.62)]
+const SPRITE_H := { "normal": 110.0, "elite": 150.0, "boss": 200.0, "girl": 120.0 }
 
 
 func _ready() -> void:
@@ -34,27 +37,25 @@ func _ready() -> void:
 	_build_layout()
 	if run_mode:
 		battle = Game.run.pending_battle
-		log_cursor = 0
-		log_text.clear()
-		_refresh()
+		_reset_view()
 	else:
 		_start_battle("trash_pack")
 
 
 func _build_layout() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color("#1b1d24")
+	bg.color = Color("#16181f")
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
 	var root := MarginContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
-		root.add_theme_constant_override(m, 12)
+		root.add_theme_constant_override(m, 10)
 	add_child(root)
 
 	var main := VBoxContainer.new()
-	main.add_theme_constant_override("separation", 8)
+	main.add_theme_constant_override("separation", 6)
 	root.add_child(main)
 
 	var top_row := HBoxContainer.new()
@@ -75,65 +76,66 @@ func _build_layout() -> void:
 		restart.pressed.connect(func(): _start_battle(pack_picker.get_item_text(pack_picker.selected)))
 		top_row.add_child(restart)
 
-	var columns := HBoxContainer.new()
-	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	columns.add_theme_constant_override("separation", 16)
-	main.add_child(columns)
+	battlefield = Panel.new()
+	battlefield.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	battlefield.size_flags_stretch_ratio = 1.35
+	var field_style := StyleBoxFlat.new()
+	field_style.bg_color = Color("#1d2030")
+	field_style.set_corner_radius_all(8)
+	battlefield.add_theme_stylebox_override("panel", field_style)
+	battlefield.resized.connect(_layout_field)
+	main.add_child(battlefield)
 
-	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(PANEL_W, 0)
-	left.add_theme_constant_override("separation", 6)
-	columns.add_child(left)
-	left.add_child(_header("PARTY"))
-	party_box = VBoxContainer.new()
-	party_box.add_theme_constant_override("separation", 6)
-	left.add_child(party_box)
-	left.add_child(_header("BENCH"))
-	bench_box = VBoxContainer.new()
-	left.add_child(bench_box)
+	var ground := ColorRect.new()
+	ground.color = Color("#23263a")
+	ground.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	ground.anchor_top = 0.72
+	ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	battlefield.add_child(ground)
 
-	var mid := VBoxContainer.new()
-	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.add_child(mid)
-	mid.add_child(_header("LOG"))
+	var bottom := HBoxContainer.new()
+	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	bottom.add_theme_constant_override("separation", 12)
+	main.add_child(bottom)
+
+	var log_panel := VBoxContainer.new()
+	log_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_panel.size_flags_stretch_ratio = 0.85
+	bottom.add_child(log_panel)
 	log_text = RichTextLabel.new()
 	log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	log_text.scroll_following = true
 	log_text.bbcode_enabled = true
-	mid.add_child(log_text)
+	log_text.add_theme_font_size_override("normal_font_size", 13)
+	log_panel.add_child(log_text)
 
-	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(PANEL_W + 40, 0)
-	right.add_theme_constant_override("separation", 6)
-	columns.add_child(right)
-	right.add_child(_header("ENEMIES"))
-	enemy_box = VBoxContainer.new()
-	enemy_box.add_theme_constant_override("separation", 6)
-	right.add_child(enemy_box)
-
-	main.add_child(_header("ACTIONS"))
-	action_box = HBoxContainer.new()
-	action_box.add_theme_constant_override("separation", 6)
-	main.add_child(action_box)
+	var command := VBoxContainer.new()
+	command.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	command.size_flags_stretch_ratio = 1.15
+	command.add_theme_constant_override("separation", 6)
+	bottom.add_child(command)
+	action_box = HFlowContainer.new()
+	action_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	action_box.add_theme_constant_override("h_separation", 6)
+	action_box.add_theme_constant_override("v_separation", 6)
+	command.add_child(action_box)
 	context_box = HBoxContainer.new()
 	context_box.add_theme_constant_override("separation", 6)
-	main.add_child(context_box)
-
-
-func _header(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_color_override("font_color", Color("#8d93a5"))
-	l.add_theme_font_size_override("font_size", 13)
-	return l
+	command.add_child(context_box)
 
 
 func _start_battle(pack: String) -> void:
-	var foes: Array = db.encounters[pack]
-	battle = Battle.create(db, ["kaede", "riko", "tsubaki", "mizuki"], foes, randi())
+	battle = Battle.create(db, ["kaede", "riko", "tsubaki", "mizuki"], db.encounters[pack], randi())
+	_reset_view()
+
+
+func _reset_view() -> void:
 	selected_slot = -1
 	pending = ""
 	log_cursor = 0
+	event_cursor = battle.events.size()
+	battle_resolved = false
+	draft_pick = ""
 	log_text.clear()
 	_refresh()
 
@@ -141,6 +143,20 @@ func _start_battle(pack: String) -> void:
 ## ---- Rendering ----------------------------------------------------------------
 
 func _refresh() -> void:
+	_drain_log()
+	var icons_str := ""
+	for i in battle.icons:
+		icons_str += "◆ "
+	if battle.phase == "over":
+		top_label.text = "Round %d  —  %s" % [battle.round_num, battle.result.to_upper()]
+	else:
+		top_label.text = "Round %d   %s" % [battle.round_num, icons_str]
+	_build_field()
+	_drain_events()
+	_render_actions()
+
+
+func _drain_log() -> void:
 	while log_cursor < battle.log.size():
 		var line: String = battle.log[log_cursor]
 		var color := "#c8ccd8"
@@ -157,99 +173,214 @@ func _refresh() -> void:
 		log_text.append_text("[color=%s]%s[/color]\n" % [color, line])
 		log_cursor += 1
 
-	var icons_str := ""
-	for i in battle.icons:
-		icons_str += "◆ "
-	if battle.phase == "over":
-		top_label.text = "Round %d   —   %s" % [battle.round_num, battle.result.to_upper()]
-	else:
-		top_label.text = "Round %d   icons: %s" % [battle.round_num, icons_str]
 
-	_clear(party_box)
+func _build_field() -> void:
+	for c in widgets:
+		widgets[c].queue_free()
+	widgets.clear()
 	for slot in battle.party.size():
-		party_box.add_child(_party_panel(slot))
-	_clear(bench_box)
-	for bi in battle.bench.size():
-		bench_box.add_child(_bench_panel(bi))
-	_clear(enemy_box)
+		var girl: Combatant = battle.party[slot]
+		if girl == null:
+			continue
+		widgets[girl] = _combatant_widget(girl, "party", slot)
+		battlefield.add_child(widgets[girl])
 	for ei in battle.enemies.size():
-		enemy_box.add_child(_enemy_panel(ei))
-	_render_actions()
+		var e: Combatant = battle.enemies[ei]
+		widgets[e] = _combatant_widget(e, "enemy", ei)
+		battlefield.add_child(widgets[e])
+	# Bench note, bottom-right corner of the field.
+	var bench_names: Array = []
+	for b in battle.bench:
+		if b != null and b.is_alive():
+			bench_names.append("%s %d/%d" % [b.display_name, b.hp, b.max_hp])
+	if not bench_names.is_empty():
+		var bench_l := Label.new()
+		bench_l.name = "_bench"
+		bench_l.text = "bench: " + ", ".join(bench_names)
+		bench_l.add_theme_color_override("font_color", Color("#5d6275"))
+		bench_l.add_theme_font_size_override("font_size", 12)
+		bench_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		battlefield.add_child(bench_l)
+		bench_l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 8)
+	_layout_field()
 
 
-func _party_panel(slot: int) -> Button:
-	var girl: Combatant = battle.party[slot]
-	var b := Button.new()
-	b.custom_minimum_size = Vector2(PANEL_W, 64)
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	if girl == null or not girl.is_alive():
-		b.text = "  (down)"
-		b.disabled = true
-		return b
-	var mark := "▶ " if slot == selected_slot else "  "
-	if pending.begins_with("ally:"):
-		mark = "✚ "
-	b.text = "%s%s  [%s/%s]  HP %d/%d%s" % [
-		mark, girl.display_name, girl.element, girl.archetype, girl.hp, girl.max_hp,
-		_status_str(girl),
-	]
-	b.add_theme_color_override("font_color", Color(db.element_colors.get(girl.element, "#ffffff")))
-	b.pressed.connect(func(): _on_party_clicked(slot))
-	return b
+func _combatant_widget(c: Combatant, side: String, idx: int) -> Control:
+	var btn := Button.new()
+	btn.flat = true
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
+	box.alignment = BoxContainer.ALIGNMENT_END
+	btn.add_child(box)
 
+	var sprite_h: float = SPRITE_H["girl"]
+	if side == "enemy":
+		sprite_h = SPRITE_H.get(db.enemies[c.id].get("tier", "normal"), SPRITE_H["normal"])
 
-func _bench_panel(bi: int) -> Label:
-	var girl: Combatant = battle.bench[bi]
-	var l := Label.new()
-	if girl == null:
-		l.text = "  (empty)"
-	elif not girl.is_alive():
-		l.text = "  %s (down)" % girl.display_name
-	else:
-		l.text = "  %s  HP %d/%d" % [girl.display_name, girl.hp, girl.max_hp]
-	return l
-
-
-func _enemy_panel(ei: int) -> Button:
-	var e: Combatant = battle.enemies[ei]
-	var b := Button.new()
-	b.custom_minimum_size = Vector2(PANEL_W + 40, 72)
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	if not e.is_alive():
-		b.text = "  %s — defeated" % e.display_name
-		b.disabled = true
-		return b
-	var intent_str := ""
-	for intent in battle.intents:
-		if intent["enemy"] == ei:
-			var mv: Dictionary = db.moves[intent["move"]]
-			var who := "everyone"
-			if intent["slot"] >= 0:
-				who = "slot %d" % intent["slot"]
-				if intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
+	# Intent bubble (enemies).
+	if side == "enemy" and c.is_alive():
+		for intent in battle.intents:
+			if intent["enemy"] == idx:
+				var mv: Dictionary = db.moves[intent["move"]]
+				var who := "everyone"
+				if intent["slot"] >= 0 and intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
 					who = battle.party[intent["slot"]].display_name
-			intent_str = "\n  intent: %s → %s" % [mv["name"], who]
+				var il := Label.new()
+				il.text = "%s → %s" % [mv["name"], who]
+				il.add_theme_font_size_override("font_size", 11)
+				il.add_theme_color_override("font_color", Color("#e8a04a"))
+				il.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				il.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				box.add_child(il)
+
+	# Sprite (or element-colored silhouette).
+	var sprite_path := "res://assets/sprites/%s/%s.png" % ["girls" if side == "party" else "enemies", c.id]
+	if ResourceLoader.exists(sprite_path):
+		var tr := TextureRect.new()
+		tr.texture = load(sprite_path)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		tr.custom_minimum_size = Vector2(sprite_h * 1.1, sprite_h)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(tr)
+	else:
+		var cr := ColorRect.new()
+		cr.color = Color(db.element_colors.get(c.element, "#9a9a9a"))
+		cr.custom_minimum_size = Vector2(sprite_h * 0.55, sprite_h)
+		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var wrap := CenterContainer.new()
+		wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wrap.custom_minimum_size = Vector2(sprite_h * 1.1, sprite_h)
+		wrap.add_child(cr)
+		box.add_child(wrap)
+
+	# Name + statuses.
+	var nm := Label.new()
+	var status := ""
+	if not c.statuses.is_empty():
+		status = "  {%s}" % ", ".join(c.statuses.keys())
 	var mut := ""
-	if not e.mutations.is_empty():
-		if e.mutation_revealed:
+	if side == "enemy":
+		if not c.mutations.is_empty() and c.mutation_revealed:
 			var parts: Array = []
-			for m in e.mutations:
-				parts.append("%s %s" % [m["key"], "WEAK" if m["mult"] >= 1.5 else "RESIST"])
-			mut = "  [mutation: %s]" % ", ".join(parts)
+			for m in c.mutations:
+				parts.append("%s:%s" % [m["key"], "W" if m["mult"] >= 1.5 else "R"])
+			mut = " [%s]" % ",".join(parts)
+		elif not c.mutation_revealed:
+			mut = " [?]"
+	nm.text = c.display_name + mut + status
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nm.add_theme_font_size_override("font_size", 13)
+	var name_color := Color(db.element_colors.get(c.element, "#ffffff"))
+	if side == "party" and idx == selected_slot:
+		name_color = Color("#ffd24a")
+		nm.text = "▶ " + nm.text
+	nm.add_theme_color_override("font_color", name_color)
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(nm)
+
+	# HP bar.
+	var bar := ProgressBar.new()
+	bar.min_value = 0
+	bar.max_value = c.max_hp
+	bar.value = c.hp
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(sprite_h * 1.0, 10)
+	var bar_bg := StyleBoxFlat.new()
+	bar_bg.bg_color = Color("#101218")
+	bar_bg.set_corner_radius_all(3)
+	var bar_fill := StyleBoxFlat.new()
+	var frac := float(c.hp) / c.max_hp
+	bar_fill.bg_color = Color("#6abf6a") if frac > 0.5 else (Color("#e8c84a") if frac > 0.25 else Color("#e2543e"))
+	bar_fill.set_corner_radius_all(3)
+	bar.add_theme_stylebox_override("background", bar_bg)
+	bar.add_theme_stylebox_override("fill", bar_fill)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bar_wrap := CenterContainer.new()
+	bar_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_wrap.add_child(bar)
+	box.add_child(bar_wrap)
+	var hp_l := Label.new()
+	hp_l.text = "%d/%d" % [c.hp, c.max_hp]
+	hp_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hp_l.add_theme_font_size_override("font_size", 11)
+	hp_l.add_theme_color_override("font_color", Color("#8d93a5"))
+	hp_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(hp_l)
+
+	if not c.is_alive():
+		btn.modulate = Color(0.55, 0.5, 0.5, 0.35)
+		btn.disabled = side == "enemy"
+	# Targeting glow.
+	if side == "enemy" and pending != "" and not pending.begins_with("ally:") and c.is_alive():
+		btn.modulate = Color(1.0, 0.75, 0.7)
+	if side == "party" and pending.begins_with("ally:") and c.is_alive():
+		btn.modulate = Color(0.75, 1.0, 0.8)
+
+	if side == "party":
+		var s := idx
+		btn.pressed.connect(func(): _on_party_clicked(s))
+	else:
+		var e := idx
+		btn.pressed.connect(func(): _on_enemy_clicked(e))
+	return btn
+
+
+func _layout_field() -> void:
+	if battlefield == null:
+		return
+	var fs := battlefield.size
+	for c in widgets:
+		var w: Control = widgets[c]
+		var anchors: Array
+		var idx: int
+		if c.side == "party":
+			idx = battle.party.find(c)
+			anchors = PARTY_ANCHORS
 		else:
-			mut = "  [mutation: ?]"
-	elif not e.mutation_revealed:
-		mut = "  [mutation: ?]"
-	b.text = "  %s  [%s/%s]%s  HP %d/%d%s%s" % [e.display_name, e.element, e.archetype, mut, e.hp, e.max_hp, _status_str(e), intent_str]
-	b.add_theme_color_override("font_color", Color(db.element_colors.get(e.element, "#ffffff")))
-	b.pressed.connect(func(): _on_enemy_clicked(ei))
-	return b
+			idx = battle.enemies.find(c)
+			anchors = ENEMY_ANCHORS
+		if idx < 0:
+			continue
+		var a: Vector2 = anchors[idx % anchors.size()]
+		w.position = Vector2(a.x * fs.x, a.y * fs.y)
+		w.reset_size()
 
 
-func _status_str(c: Combatant) -> String:
-	if c.statuses.is_empty():
-		return ""
-	return "  {%s}" % ", ".join(c.statuses.keys())
+func _drain_events() -> void:
+	while event_cursor < battle.events.size():
+		var ev: Dictionary = battle.events[event_cursor]
+		event_cursor += 1
+		var target: Combatant = ev["target"]
+		if not widgets.has(target):
+			continue
+		var w: Control = widgets[target]
+		var popup := Label.new()
+		popup.add_theme_font_size_override("font_size", 22)
+		if ev["kind"] == "heal":
+			popup.text = "+%d" % ev["amount"]
+			popup.add_theme_color_override("font_color", Color("#6abf6a"))
+		else:
+			match ev["tier"]:
+				Rules.Tier.WEAK:
+					popup.text = "-%d!" % ev["amount"]
+					popup.add_theme_color_override("font_color", Color("#ffd24a"))
+				Rules.Tier.RESIST:
+					popup.text = "-%d" % ev["amount"]
+					popup.add_theme_color_override("font_color", Color("#7f8597"))
+				_:
+					popup.text = "-%d" % ev["amount"]
+					popup.add_theme_color_override("font_color", Color("#e2543e"))
+		popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		battlefield.add_child(popup)
+		popup.position = w.position + Vector2(randf_range(20, 70), -6)
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(popup, "position:y", popup.position.y - 44, 0.7)
+		tw.tween_property(popup, "modulate:a", 0.0, 0.7).set_delay(0.15)
+		tw.chain().tween_callback(popup.queue_free)
 
 
 func _render_actions() -> void:
@@ -265,7 +396,7 @@ func _render_actions() -> void:
 		return
 	if selected_slot < 0 or battle.party[selected_slot] == null or not battle.party[selected_slot].is_alive():
 		var hint := Label.new()
-		hint.text = "Select a girl to act (%d icons left)." % battle.icons
+		hint.text = "Select a girl (right side) to act — %d icons left." % battle.icons
 		action_box.add_child(hint)
 	else:
 		var girl: Combatant = battle.party[selected_slot]
@@ -286,11 +417,11 @@ func _render_actions() -> void:
 				action_box.add_child(off)
 		if girl.actions_this_round >= Battle.MAX_ACTIONS_PER_GIRL:
 			var capped := Label.new()
-			capped.text = "(acted %d/%d this round)" % [girl.actions_this_round, Battle.MAX_ACTIONS_PER_GIRL]
+			capped.text = "(acted %d/%d)" % [girl.actions_this_round, Battle.MAX_ACTIONS_PER_GIRL]
 			action_box.add_child(capped)
 
 		var probe := Button.new()
-		probe.text = "Probe\n(reveal mutation)"
+		probe.text = "Probe"
 		probe.pressed.connect(func(): _set_pending("probe"))
 		if pending == "probe":
 			probe.add_theme_color_override("font_color", Color("#c77dff"))
@@ -299,7 +430,7 @@ func _render_actions() -> void:
 			var bg: Combatant = battle.bench[bi]
 			if bg != null and bg.is_alive():
 				var sw := Button.new()
-				sw.text = "Switch in %s" % bg.display_name
+				sw.text = "Switch: %s" % bg.display_name
 				var bench_index := bi
 				sw.pressed.connect(func(): _do_action({ "type": "switch", "slot": selected_slot, "bench": bench_index }))
 				context_box.add_child(sw)
@@ -330,6 +461,14 @@ func _render_run_outcome() -> void:
 
 func _render_draft(run: Run) -> void:
 	var girl: Combatant = run.roster[run.pending_draft["girl_index"]]
+	var portrait_path := "res://assets/portraits/%s.png" % girl.id
+	if ResourceLoader.exists(portrait_path):
+		var pt := TextureRect.new()
+		pt.texture = load(portrait_path)
+		pt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pt.custom_minimum_size = Vector2(72, 72)
+		action_box.add_child(pt)
 	if draft_pick == "":
 		var lbl := Label.new()
 		lbl.text = "The armory offers %s a new technique:" % girl.display_name
