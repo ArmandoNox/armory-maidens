@@ -43,6 +43,25 @@ static func create(p_db: DataDB, girl_ids: Array, enemy_ids: Array, seed_val: in
 	return b
 
 
+## Build a battle around an EXISTING roster (persistent run HP). Statuses and
+## cooldowns reset; HP carries.
+static func create_with_party(p_db: DataDB, roster: Array, enemy_ids: Array, seed_val: int) -> Battle:
+	var b := Battle.new()
+	b.db = p_db
+	b.rng.seed = seed_val
+	for i in roster.size():
+		var c: Combatant = roster[i]
+		c.reset_battle_state()
+		if b.party.size() < MAX_ACTIVE and c.is_alive():
+			b.party.append(c)
+		else:
+			b.bench.append(c)
+	for eid in enemy_ids:
+		b.enemies.append(Combatant.from_enemy(p_db, eid, b.rng))
+	b.start_round()
+	return b
+
+
 func start_round() -> void:
 	round_num += 1
 	bonus_minted = 0
@@ -80,7 +99,11 @@ func legal_actions() -> Array:
 					out.append({ "type": "attack", "actor": slot, "move": m, "target": -1 })
 				"self":
 					out.append({ "type": "attack", "actor": slot, "move": m, "target": slot })
-				"ally", "party":
+				"ally":
+					for t in party.size():
+						if party[t] != null and party[t].is_alive():
+							out.append({ "type": "attack", "actor": slot, "move": m, "target": t })
+				"party":
 					out.append({ "type": "attack", "actor": slot, "move": m, "target": slot })
 		for t in enemies.size():
 			if enemies[t].is_alive() and not enemies[t].mutation_revealed:
@@ -245,19 +268,22 @@ func _do_probe(slot: int, target: int) -> void:
 	girl.actions_this_round += 1
 	icons -= 1
 	foe.mutation_revealed = true
-	if foe.mutation.is_empty():
+	if foe.mutations.is_empty():
 		_log("Probe: %s is true to its kind — no mutation." % foe.display_name)
 	else:
-		_log("Probe: %s %s vs %s! (mutation)" % [foe.display_name, "WEAK" if foe.mutation["mult"] >= Rules.WEAK_MULT else "RESISTS", foe.mutation["key"]])
+		for m in foe.mutations:
+			_log("Probe: %s %s vs %s! (mutation)" % [foe.display_name, "WEAK" if m["mult"] >= Rules.WEAK_MULT else "RESISTS", m["key"]])
 
 
 func _maybe_reveal_mutation(target: Combatant, atk_elem: String, atk_phys: String) -> void:
-	if target.mutation_revealed or target.mutation.is_empty():
+	if target.mutation_revealed or target.mutations.is_empty():
 		return
-	var key: String = target.mutation["key"]
-	if (target.mutation["kind"] == "element" and key == atk_elem) or (target.mutation["kind"] == "phys" and key == atk_phys):
-		target.mutation_revealed = true
-		_log("Mutation revealed — %s reacts strangely to %s!" % [target.display_name, key])
+	for m in target.mutations:
+		var key: String = m["key"]
+		if (m["kind"] == "element" and key == atk_elem) or (m["kind"] == "phys" and key == atk_phys):
+			target.mutation_revealed = true
+			_log("Mutation revealed — %s reacts strangely to %s!" % [target.display_name, key])
+			return
 
 
 func _roll_intents() -> void:
@@ -313,6 +339,8 @@ func _enemy_execute(e: Combatant, move_id: String, slot: int) -> int:
 		move_id = e.moves[0]
 		mv = db.moves[move_id]
 	e.cooldowns[move_id] = int(mv.get("cooldown", 0)) + 1
+	if mv.get("target", "enemy") == "all_party":
+		return _enemy_execute_aoe(e, mv)
 	var target: Combatant = null
 	if slot >= 0 and slot < party.size() and party[slot] != null and party[slot].is_alive():
 		target = party[slot]
@@ -335,6 +363,25 @@ func _enemy_execute(e: Combatant, move_id: String, slot: int) -> int:
 		var cmult := Rules.combined_mult(db, bmv["element"], bmv["phys"], e)
 		var cdmg := e.take_damage(Rules.damage(int(bmv["power"]), target.eff_atk(), e.eff_def(), cmult))
 		_log("%s counters for %d dmg!" % [target.display_name, cdmg])
+	if tier == Rules.Tier.WEAK:
+		_log("%s exploited a weakness — it presses the advantage!" % e.display_name)
+		return 0
+	if tier == Rules.Tier.RESIST:
+		return 2
+	return 1
+
+
+func _enemy_execute_aoe(e: Combatant, mv: Dictionary) -> int:
+	var best_mult := 0.0
+	for t in _living(party):
+		var target: Combatant = t
+		var mult := Rules.combined_mult(db, mv["element"], mv["phys"], target)
+		best_mult = maxf(best_mult, mult)
+		var dmg: int = target.take_damage(Rules.damage(int(mv["power"]), e.eff_atk(), target.eff_def(), mult))
+		_log("%s's %s hits %s — %d dmg [%s]." % [e.display_name, mv["name"], target.display_name, dmg, Rules.tier_name(Rules.tier_of(mult))])
+		if not target.is_alive():
+			_log("%s falls!" % target.display_name)
+	var tier := Rules.tier_of(best_mult)
 	if tier == Rules.Tier.WEAK:
 		_log("%s exploited a weakness — it presses the advantage!" % e.display_name)
 		return 0

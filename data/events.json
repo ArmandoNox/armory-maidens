@@ -1,0 +1,26 @@
+{
+  "abandoned_forge": {
+    "name": "Abandoned Forge",
+    "text": "A forge gone cold, tools still hanging. The coals could take one more flame.",
+    "choices": [
+      { "label": "Temper a blade (+1 ATK to a random girl, permanent)", "effect": "atk_plus_one_random" },
+      { "label": "Rest by the embers (heal party 20%)", "effect": "heal_party_20" }
+    ]
+  },
+  "cracked_spring": {
+    "name": "Cracked Spring",
+    "text": "Clear water seeps from a fractured stone basin. There isn't much.",
+    "choices": [
+      { "label": "The most wounded drinks deep (full heal, lowest-HP girl)", "effect": "full_heal_lowest" },
+      { "label": "Everyone sips (heal party 15%)", "effect": "heal_party_15" }
+    ]
+  },
+  "whetstone_shrine": {
+    "name": "Whetstone Shrine",
+    "text": "An old shrine whose altar is a worn whetstone. It asks for an offering.",
+    "choices": [
+      { "label": "Offer blood (party loses 10% HP, ALL girls +1 ATK)", "effect": "blood_offer" },
+      { "label": "Pass by quietly (nothing happens)", "effect": "none" }
+    ]
+  }
+}

@@ -11,6 +11,8 @@ var girls: Dictionary = {}
 var moves: Dictionary = {}
 var enemies: Dictionary = {}
 var encounters: Dictionary = {}
+var acts: Dictionary = {}
+var events: Dictionary = {}
 
 
 static func load_default() -> DataDB:
@@ -26,6 +28,8 @@ static func load_default() -> DataDB:
 	db.moves = _load_json("res://data/moves.json")
 	db.enemies = _load_json("res://data/enemies.json")
 	db.encounters = _load_json("res://data/encounters.json")
+	db.acts = _load_json("res://data/acts.json")
+	db.events = _load_json("res://data/events.json")
 	return db
 
 

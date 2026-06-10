@@ -8,7 +8,8 @@
     "trigger": "bulwark",
     "trigger_desc": "Switch-in: gains Guard (halves the next hit she takes).",
     "basic": "cleave",
-    "moves": ["quake_edge", "pommel_strike", "bulwark_stance", "earthsplitter", "iron_resolve"]
+    "equipped": ["quake_edge", "pommel_strike", "bulwark_stance", "iron_resolve"],
+    "moves": ["quake_edge", "pommel_strike", "bulwark_stance", "earthsplitter", "iron_resolve", "whirlwind_edge", "crag_fissure", "gaia_break", "tempered_edge"]
   },
   "riko": {
     "name": "Riko",
@@ -19,7 +20,8 @@
     "trigger": "opening_jab",
     "trigger_desc": "Switch-in: free low-power snap shot at a random enemy.",
     "basic": "double_tap",
-    "moves": ["volt_rounds", "piercing_slug", "ricochet", "pistol_whip", "snap_focus"]
+    "equipped": ["volt_rounds", "piercing_slug", "ricochet", "pistol_whip"],
+    "moves": ["volt_rounds", "piercing_slug", "ricochet", "pistol_whip", "snap_focus", "storm_barrage", "aimed_shot", "thunder_caliber", "covering_fire"]
   },
   "tsubaki": {
     "name": "Tsubaki",
@@ -30,7 +32,8 @@
     "trigger": "counter_stance",
     "trigger_desc": "Switch-in: gains Counter (retaliates with her basic when hit this round).",
     "basic": "jab_cross",
-    "moves": ["blazing_fist", "skull_crusher", "counter_stance", "meteor_drive", "inner_flame"]
+    "equipped": ["blazing_fist", "counter_stance", "skull_crusher", "inner_flame"],
+    "moves": ["blazing_fist", "counter_stance", "skull_crusher", "inner_flame", "meteor_drive", "rising_knee", "ashen_flurry", "volcanic_rush", "searing_grip"]
   },
   "mizuki": {
     "name": "Mizuki",
@@ -41,6 +44,7 @@
     "trigger": "soothing_mist",
     "trigger_desc": "Switch-in: heals the active party for 12% max HP.",
     "basic": "wave_bolt",
-    "moves": ["tidal_crush", "healing_rain", "undertow", "renewal", "mist_veil"]
+    "equipped": ["tidal_crush", "healing_rain", "renewal", "undertow"],
+    "moves": ["tidal_crush", "healing_rain", "renewal", "undertow", "mist_veil", "riptide", "pressure_jet", "blessing_depths", "maelstrom"]
   }
 }

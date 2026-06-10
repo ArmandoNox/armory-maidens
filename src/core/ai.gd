@@ -11,6 +11,13 @@ static func pick_intent(b: Battle, e: Combatant) -> Dictionary:
 		if int(e.cooldowns.get(m, 0)) > 0:
 			continue
 		var mv: Dictionary = b.db.moves[m]
+		if mv.get("target", "enemy") == "all_party":
+			var total := 0.0
+			for girl in b.party:
+				if girl != null and girl.is_alive():
+					total += Rules.combined_mult(b.db, mv["element"], mv["phys"], girl) * float(mv["power"])
+			options.append({ "move": m, "slot": -1, "score": total * 0.7 })
+			continue
 		for slot in b.party.size():
 			var girl: Combatant = b.party[slot]
 			if girl == null or not girl.is_alive():

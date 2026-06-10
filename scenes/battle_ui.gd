@@ -1,12 +1,16 @@
 extends Control
 ## Greybox battle UI — rectangles and labels only, built entirely in code.
-## Pixel-art combat presentation replaces this after the fun gate passes.
+## Runs in two modes: as part of a Run (entered from the map; victory leads to
+## the armory draft) or standalone with the encounter picker (direct launch).
 
 var db: DataDB
 var battle: Battle
+var run_mode := false
 var selected_slot := -1
-var pending: String = ""          # "" | move_id | "probe" | "switch"
+var pending: String = ""          # "" | move_id | "ally:<move_id>" | "probe"
 var log_cursor := 0
+var battle_resolved := false      # run-mode: on_battle_finished() called
+var draft_pick := ""              # run-mode: offer chosen, awaiting replace slot
 
 var top_label: Label
 var party_box: VBoxContainer
@@ -21,9 +25,20 @@ const PANEL_W := 320
 
 
 func _ready() -> void:
-	db = DataDB.load_default()
+	var game := get_node_or_null("/root/Game")
+	if game != null and game.run != null and game.run.state == "battle":
+		db = game.db
+		run_mode = true
+	else:
+		db = DataDB.load_default()
 	_build_layout()
-	_start_battle("trash_pack")
+	if run_mode:
+		battle = Game.run.pending_battle
+		log_cursor = 0
+		log_text.clear()
+		_refresh()
+	else:
+		_start_battle("trash_pack")
 
 
 func _build_layout() -> void:
@@ -50,14 +65,15 @@ func _build_layout() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_row.add_child(spacer)
-	pack_picker = OptionButton.new()
-	for pack in db.encounters:
-		pack_picker.add_item(pack)
-	top_row.add_child(pack_picker)
-	var restart := Button.new()
-	restart.text = "Restart"
-	restart.pressed.connect(func(): _start_battle(pack_picker.get_item_text(pack_picker.selected)))
-	top_row.add_child(restart)
+	if not run_mode:
+		pack_picker = OptionButton.new()
+		for pack in db.encounters:
+			pack_picker.add_item(pack)
+		top_row.add_child(pack_picker)
+		var restart := Button.new()
+		restart.text = "Restart"
+		restart.pressed.connect(func(): _start_battle(pack_picker.get_item_text(pack_picker.selected)))
+		top_row.add_child(restart)
 
 	var columns := HBoxContainer.new()
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -171,6 +187,8 @@ func _party_panel(slot: int) -> Button:
 		b.disabled = true
 		return b
 	var mark := "▶ " if slot == selected_slot else "  "
+	if pending.begins_with("ally:"):
+		mark = "✚ "
 	b.text = "%s%s  [%s/%s]  HP %d/%d%s" % [
 		mark, girl.display_name, girl.element, girl.archetype, girl.hp, girl.max_hp,
 		_status_str(girl),
@@ -205,13 +223,21 @@ func _enemy_panel(ei: int) -> Button:
 	for intent in battle.intents:
 		if intent["enemy"] == ei:
 			var mv: Dictionary = db.moves[intent["move"]]
-			var who := "slot %d" % intent["slot"]
-			if intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
-				who = battle.party[intent["slot"]].display_name
+			var who := "everyone"
+			if intent["slot"] >= 0:
+				who = "slot %d" % intent["slot"]
+				if intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
+					who = battle.party[intent["slot"]].display_name
 			intent_str = "\n  intent: %s → %s" % [mv["name"], who]
 	var mut := ""
-	if not e.mutation.is_empty():
-		mut = "  [mutation: %s]" % (("%s %s" % [e.mutation["key"], "WEAK" if e.mutation["mult"] >= 1.5 else "RESIST"]) if e.mutation_revealed else "?")
+	if not e.mutations.is_empty():
+		if e.mutation_revealed:
+			var parts: Array = []
+			for m in e.mutations:
+				parts.append("%s %s" % [m["key"], "WEAK" if m["mult"] >= 1.5 else "RESIST"])
+			mut = "  [mutation: %s]" % ", ".join(parts)
+		else:
+			mut = "  [mutation: ?]"
 	elif not e.mutation_revealed:
 		mut = "  [mutation: ?]"
 	b.text = "  %s  [%s/%s]%s  HP %d/%d%s%s" % [e.display_name, e.element, e.archetype, mut, e.hp, e.max_hp, _status_str(e), intent_str]
@@ -230,9 +256,12 @@ func _render_actions() -> void:
 	_clear(action_box)
 	_clear(context_box)
 	if battle.phase == "over":
-		var done := Label.new()
-		done.text = "Battle over — Restart or pick another pack."
-		action_box.add_child(done)
+		if run_mode:
+			_render_run_outcome()
+		else:
+			var done := Label.new()
+			done.text = "Battle over — Restart or pick another pack."
+			action_box.add_child(done)
 		return
 	if selected_slot < 0 or battle.party[selected_slot] == null or not battle.party[selected_slot].is_alive():
 		var hint := Label.new()
@@ -246,7 +275,7 @@ func _render_actions() -> void:
 			var cd := int(mv.get("cooldown", 0))
 			btn.text = "%s\n%s/%s  p%d%s" % [mv["name"], mv["element"], mv["phys"], int(mv["power"]), ("  cd%d" % cd) if cd > 0 else ""]
 			btn.pressed.connect(func(): _on_move_clicked(m))
-			if pending == m:
+			if pending == m or pending == "ally:" + m:
 				btn.add_theme_color_override("font_color", Color("#ffd24a"))
 			action_box.add_child(btn)
 		for m in girl.moves:
@@ -281,9 +310,76 @@ func _render_actions() -> void:
 	context_box.add_child(pass_btn)
 
 
+## ---- Run mode: victory rewards / defeat ------------------------------------------
+
+func _render_run_outcome() -> void:
+	var run: Run = Game.run
+	if not battle_resolved:
+		battle_resolved = true
+		run.on_battle_finished()
+	match run.state:
+		"draft":
+			_render_draft(run)
+		"over", "map":
+			var btn := Button.new()
+			btn.text = "Continue" if run.result != "defeat" else "Accept defeat"
+			btn.custom_minimum_size = Vector2(220, 48)
+			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+			action_box.add_child(btn)
+
+
+func _render_draft(run: Run) -> void:
+	var girl: Combatant = run.roster[run.pending_draft["girl_index"]]
+	if draft_pick == "":
+		var lbl := Label.new()
+		lbl.text = "The armory offers %s a new technique:" % girl.display_name
+		lbl.add_theme_color_override("font_color", Color("#ffd24a"))
+		action_box.add_child(lbl)
+		for offer in run.pending_draft["offers"]:
+			var mv: Dictionary = db.moves[offer]
+			var btn := Button.new()
+			var eff: String = mv.get("effect", "")
+			btn.text = "%s\n%s/%s  p%d  cd%d%s" % [mv["name"], mv["element"], mv["phys"], int(mv["power"]), int(mv.get("cooldown", 0)), ("\n[%s]" % eff) if eff != "" else ""]
+			var offer_id: String = offer
+			btn.pressed.connect(func():
+				draft_pick = offer_id
+				_refresh())
+			context_box.add_child(btn)
+		var skip := Button.new()
+		skip.text = "Skip"
+		skip.pressed.connect(func():
+			run.apply_draft("", -1)
+			get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+		context_box.add_child(skip)
+	else:
+		var lbl := Label.new()
+		lbl.text = "Replace which of %s's moves with %s?" % [girl.display_name, db.moves[draft_pick]["name"]]
+		lbl.add_theme_color_override("font_color", Color("#ffd24a"))
+		action_box.add_child(lbl)
+		for mi in girl.moves.size():
+			var mv: Dictionary = db.moves[girl.moves[mi]]
+			var btn := Button.new()
+			btn.text = "%s\n%s/%s  p%d" % [mv["name"], mv["element"], mv["phys"], int(mv["power"])]
+			var idx := mi
+			btn.pressed.connect(func():
+				Game.run.apply_draft(draft_pick, idx)
+				get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+			context_box.add_child(btn)
+		var back := Button.new()
+		back.text = "Back"
+		back.pressed.connect(func():
+			draft_pick = ""
+			_refresh())
+		context_box.add_child(back)
+
+
 ## ---- Input flow -----------------------------------------------------------------
 
 func _on_party_clicked(slot: int) -> void:
+	if pending.begins_with("ally:") and selected_slot >= 0:
+		var move_id := pending.substr(5)
+		_do_action({ "type": "attack", "actor": selected_slot, "move": move_id, "target": slot })
+		return
 	selected_slot = slot
 	pending = ""
 	_refresh()

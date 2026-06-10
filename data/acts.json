@@ -1,0 +1,23 @@
+{
+  "act1": {
+    "fights_early": [
+      ["cinder_imp", "cinder_imp", "bramble_pup"],
+      ["bog_slime", "bramble_pup"],
+      ["hollow_archer", "cinder_imp"],
+      ["bramble_pup", "bramble_pup", "cinder_imp"]
+    ],
+    "fights_late": [
+      ["rustclad_sentinel", "bog_slime", "hollow_archer"],
+      ["bog_slime", "bog_slime", "cinder_imp"],
+      ["rustclad_sentinel", "rustclad_sentinel"],
+      ["hollow_archer", "hollow_archer", "bog_slime"]
+    ],
+    "elites": [
+      ["grave_warden", "bramble_pup"],
+      ["grave_warden", "hollow_archer"]
+    ],
+    "boss": [
+      ["verdigris_colossus"]
+    ]
+  }
+}

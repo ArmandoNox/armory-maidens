@@ -101,5 +101,24 @@
     ],
     "tier": "elite",
     "mutation_chance": 1.0
+  },
+  "verdigris_colossus": {
+    "name": "Verdigris Colossus",
+    "element": "terra",
+    "archetype": "armored",
+    "stats": {
+      "hp": 380,
+      "atk": 18,
+      "def": 15,
+      "spd": 9
+    },
+    "moves": [
+      "bs_seismic_slam",
+      "bs_crush",
+      "em_rock_throw"
+    ],
+    "tier": "boss",
+    "mutation_chance": 1.0,
+    "mutation_count": 2
   }
 }
