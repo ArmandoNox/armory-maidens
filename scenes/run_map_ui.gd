@@ -77,6 +77,7 @@ func _build() -> void:
 		Game.new_run()
 		run = Game.run
 		_build())
+	UITheme.style_button(new_run)
 	top.add_child(new_run)
 
 	var roster_row := HBoxContainer.new()
@@ -148,8 +149,8 @@ func _build_map() -> void:
 			if f == run.cur_floor and i == run.cur_index:
 				btn.text = "▶ " + btn.text
 			btn.disabled = not can_enter
+			UITheme.style_button(btn, Color(TYPE_COLORS.get(node["type"], "#ffffff")))
 			if can_enter:
-				btn.add_theme_color_override("font_color", Color(TYPE_COLORS.get(node["type"], "#ffffff")))
 				var ff: int = f
 				var ii: int = i
 				btn.pressed.connect(func(): _enter(ff, ii))
@@ -210,11 +211,13 @@ func _build_event_panel() -> void:
 		var choice: Dictionary = ev["choices"][ci]
 		var btn := Button.new()
 		btn.text = choice["label"]
+		btn.custom_minimum_size = Vector2(0, 44)
 		var idx := ci
 		btn.pressed.connect(func():
 			var msg := run.apply_event_choice(idx)
 			_build()
 			status_label.text = msg)
+		UITheme.style_button(btn, Color("#c77dff"))
 		panel.add_child(btn)
 
 
@@ -239,8 +242,10 @@ func _build_over_panel() -> void:
 	panel.add_child(stats)
 	var btn := Button.new()
 	btn.text = "Start a new run"
+	btn.custom_minimum_size = Vector2(220, 48)
 	btn.pressed.connect(func():
 		Game.new_run()
 		run = Game.run
 		_build())
+	UITheme.style_button(btn, Color("#ffd24a"))
 	panel.add_child(btn)

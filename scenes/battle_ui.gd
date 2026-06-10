@@ -106,22 +106,26 @@ func _build_layout() -> void:
 	bottom.add_theme_constant_override("separation", 12)
 	main.add_child(bottom)
 
-	var log_panel := VBoxContainer.new()
-	log_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	log_panel.size_flags_stretch_ratio = 0.85
-	bottom.add_child(log_panel)
+	var log_frame := PanelContainer.new()
+	log_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_frame.size_flags_stretch_ratio = 0.8
+	log_frame.add_theme_stylebox_override("panel", UITheme.panel_box())
+	bottom.add_child(log_frame)
 	log_text = RichTextLabel.new()
 	log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	log_text.scroll_following = true
 	log_text.bbcode_enabled = true
 	log_text.add_theme_font_size_override("normal_font_size", 13)
-	log_panel.add_child(log_text)
+	log_frame.add_child(log_text)
 
+	var command_frame := PanelContainer.new()
+	command_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	command_frame.size_flags_stretch_ratio = 1.2
+	command_frame.add_theme_stylebox_override("panel", UITheme.panel_box())
+	bottom.add_child(command_frame)
 	var command := VBoxContainer.new()
-	command.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	command.size_flags_stretch_ratio = 1.15
 	command.add_theme_constant_override("separation", 6)
-	bottom.add_child(command)
+	command_frame.add_child(command)
 	action_box = HFlowContainer.new()
 	action_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	action_box.add_theme_constant_override("h_separation", 6)
@@ -191,6 +195,8 @@ func _drain_log() -> void:
 
 func _build_field() -> void:
 	for c in widgets:
+		if widgets[c].has_meta("bob"):
+			(widgets[c].get_meta("bob") as Tween).kill()
 		widgets[c].queue_free()
 	widgets.clear()
 	for slot in battle.party.size():
@@ -223,6 +229,7 @@ func _build_field() -> void:
 func _combatant_widget(c: Combatant, side: String, idx: int) -> Control:
 	var btn := Button.new()
 	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation", 2)
@@ -232,6 +239,10 @@ func _combatant_widget(c: Combatant, side: String, idx: int) -> Control:
 	var sprite_h: float = SPRITE_H["girl"]
 	if side == "enemy":
 		sprite_h = SPRITE_H.get(db.enemies[c.id].get("tier", "normal"), SPRITE_H["normal"])
+	# A Button does not size itself to children — without this the clickable
+	# rect is near-zero and nothing in the battlefield can be selected.
+	btn.custom_minimum_size = Vector2(maxf(150.0, sprite_h * 1.1), sprite_h + 72.0)
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 
 	# Intent bubble (enemies).
 	if side == "enemy" and c.is_alive():
@@ -360,8 +371,17 @@ func _layout_field() -> void:
 		if idx < 0:
 			continue
 		var a: Vector2 = anchors[idx % anchors.size()]
+		if w.has_meta("bob"):
+			(w.get_meta("bob") as Tween).kill()
 		w.position = Vector2(a.x * fs.x, a.y * fs.y)
 		w.reset_size()
+		if c.is_alive():
+			var base_y: float = w.position.y
+			var half := 0.85 + randf() * 0.5
+			var bob := create_tween().set_loops()
+			bob.tween_property(w, "position:y", base_y - 3.0, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			bob.tween_property(w, "position:y", base_y + 3.0, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			w.set_meta("bob", bob)
 
 
 func _drain_events() -> void:
@@ -372,6 +392,26 @@ func _drain_events() -> void:
 		if not widgets.has(target):
 			continue
 		var w: Control = widgets[target]
+		# Attacker lunge toward the target.
+		var actor: Combatant = ev.get("actor")
+		if ev["kind"] == "hit" and actor != null and widgets.has(actor) and actor != target:
+			var aw: Control = widgets[actor]
+			var ax: float = aw.position.x
+			var dx := -38.0 if actor.side == "party" else 38.0
+			var lunge := create_tween()
+			lunge.tween_property(aw, "position:x", ax + dx, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			lunge.tween_property(aw, "position:x", ax, 0.16)
+		# Target flash + shake.
+		var orig_mod: Color = w.modulate
+		var flash := create_tween()
+		flash.tween_property(w, "modulate", Color(1.7, 0.55, 0.55) if ev["kind"] == "hit" else Color(0.6, 1.6, 0.7), 0.07)
+		flash.tween_property(w, "modulate", orig_mod, 0.25)
+		if ev["kind"] == "hit" and ev["amount"] > 0:
+			var wx: float = w.position.x
+			var shake := create_tween()
+			shake.tween_property(w, "position:x", wx + 7.0, 0.05)
+			shake.tween_property(w, "position:x", wx - 6.0, 0.06)
+			shake.tween_property(w, "position:x", wx, 0.05)
 		var popup := Label.new()
 		popup.add_theme_font_size_override("font_size", 22)
 		if ev["kind"] == "heal":
@@ -420,7 +460,9 @@ func _render_actions() -> void:
 			var btn := Button.new()
 			var cd := int(mv.get("cooldown", 0))
 			btn.text = "%s\n%s/%s  p%d%s" % [mv["name"], mv["element"], mv["phys"], int(mv["power"]), ("  cd%d" % cd) if cd > 0 else ""]
+			btn.custom_minimum_size = Vector2(158, 54)
 			btn.pressed.connect(func(): _on_move_clicked(m))
+			UITheme.style_button(btn, Color(db.element_colors.get(mv["element"], "#c8ccd8")))
 			if pending == m or pending == "ally:" + m:
 				btn.add_theme_color_override("font_color", Color("#ffd24a"))
 			action_box.add_child(btn)
@@ -428,7 +470,9 @@ func _render_actions() -> void:
 			if int(girl.cooldowns.get(m, 0)) > 0:
 				var off := Button.new()
 				off.text = "%s\n(cd %d)" % [db.moves[m]["name"], int(girl.cooldowns[m])]
+				off.custom_minimum_size = Vector2(158, 54)
 				off.disabled = true
+				UITheme.style_button(off)
 				action_box.add_child(off)
 		if girl.actions_this_round >= Battle.MAX_ACTIONS_PER_GIRL:
 			var capped := Label.new()
@@ -437,22 +481,28 @@ func _render_actions() -> void:
 
 		var probe := Button.new()
 		probe.text = "Probe"
+		probe.custom_minimum_size = Vector2(110, 40)
 		probe.pressed.connect(func(): _set_pending("probe"))
+		UITheme.style_button(probe, Color("#c77dff"))
 		if pending == "probe":
-			probe.add_theme_color_override("font_color", Color("#c77dff"))
+			probe.add_theme_color_override("font_color", Color("#ffffff"))
 		context_box.add_child(probe)
 		for bi in battle.bench.size():
 			var bg: Combatant = battle.bench[bi]
 			if bg != null and bg.is_alive():
 				var sw := Button.new()
 				sw.text = "Switch: %s" % bg.display_name
+				sw.custom_minimum_size = Vector2(140, 40)
 				var bench_index := bi
 				sw.pressed.connect(func(): _do_action({ "type": "switch", "slot": selected_slot, "bench": bench_index }))
+				UITheme.style_button(sw)
 				context_box.add_child(sw)
 
 	var pass_btn := Button.new()
 	pass_btn.text = "End Turn"
+	pass_btn.custom_minimum_size = Vector2(110, 40)
 	pass_btn.pressed.connect(func(): _do_action({ "type": "pass" }))
+	UITheme.style_button(pass_btn, Color("#e8a04a"))
 	context_box.add_child(pass_btn)
 
 
@@ -471,6 +521,7 @@ func _render_run_outcome() -> void:
 			btn.text = "Continue" if run.result != "defeat" else "Accept defeat"
 			btn.custom_minimum_size = Vector2(220, 48)
 			btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+			UITheme.style_button(btn, Color("#ffd24a"))
 			action_box.add_child(btn)
 
 
@@ -494,16 +545,20 @@ func _render_draft(run: Run) -> void:
 			var btn := Button.new()
 			var eff: String = mv.get("effect", "")
 			btn.text = "%s\n%s/%s  p%d  cd%d%s" % [mv["name"], mv["element"], mv["phys"], int(mv["power"]), int(mv.get("cooldown", 0)), ("\n[%s]" % eff) if eff != "" else ""]
+			btn.custom_minimum_size = Vector2(170, 60)
 			var offer_id: String = offer
 			btn.pressed.connect(func():
 				draft_pick = offer_id
 				_refresh())
+			UITheme.style_button(btn, Color(db.element_colors.get(mv["element"], "#c8ccd8")))
 			context_box.add_child(btn)
 		var skip := Button.new()
 		skip.text = "Skip"
+		skip.custom_minimum_size = Vector2(100, 60)
 		skip.pressed.connect(func():
 			run.apply_draft("", -1)
 			get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+		UITheme.style_button(skip)
 		context_box.add_child(skip)
 	else:
 		var lbl := Label.new()
@@ -514,16 +569,20 @@ func _render_draft(run: Run) -> void:
 			var mv: Dictionary = db.moves[girl.moves[mi]]
 			var btn := Button.new()
 			btn.text = "%s\n%s/%s  p%d" % [mv["name"], mv["element"], mv["phys"], int(mv["power"])]
+			btn.custom_minimum_size = Vector2(170, 60)
 			var idx := mi
 			btn.pressed.connect(func():
 				Game.run.apply_draft(draft_pick, idx)
 				get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+			UITheme.style_button(btn, Color(db.element_colors.get(mv["element"], "#c8ccd8")))
 			context_box.add_child(btn)
 		var back := Button.new()
 		back.text = "Back"
+		back.custom_minimum_size = Vector2(100, 60)
 		back.pressed.connect(func():
 			draft_pick = ""
 			_refresh())
+		UITheme.style_button(back)
 		context_box.add_child(back)
 
 
