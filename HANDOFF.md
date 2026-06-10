@@ -245,6 +245,13 @@ NEAREST everything, no smooth-particle confetti, never card frames.
 
 ## 7. Pending / open
 
+- **CHECKPOINT 2026-06-10 (end of presentation sessions):** operator is now
+  playtesting the live build (batches A+B+C) and taking notes; he will return
+  with feedback in a future session. NEXT UP when he does: (1) his playtest
+  notes, (2) the fun-gate rubric answers below, (3) Batch D — the world
+  (medallion map + marching party, ember weather, Colossus skyline, fight-start
+  stamp, boss letterbox intro, Armory Room draft scene, forge-quench wipes; see
+  §6b), and the enemy-phase replay refactor (§6b last bullet).
 - **Fun-gate rubric** — operator has the 6 questions written aside, testing
   now (~10 fights). Q1 icons-changed-a-decision; Q2 still probing?; Q3
   enemies-same vs turns-same; Q4 switches/fight; Q5 what card-hunger actually
@@ -272,5 +279,16 @@ framed ability entries w/ pixel icons + believed-tier detail panel + tier
 badges while aiming, HelpOverlay onboarding + icon mint/burn teach popups,
 map node icons/gold paths/pulse/tooltips, attack-pose lunge swap + KO/switch/
 shake/intent-pulse animations, run stats on the over panel; 66 tests).
-All four DA rounds and operator rulings happened this day. Art spend ~$5.40
-total (41 images: 18 greybox-era + 23 polish, all 1K, only 2 re-rolls ever).
+`ed4010f` clipping fix (anchor-y as fraction of available height) + uicheck
+field-containment guard →
+`e30f598` Batch A juice (hit-stop/punch-zoom/rim, mass numbers, intent icon
+chips, mutation flicker, ticker log, CRT shader, outcome staging, save-version
+guard, cancel affordance, ember map trail) →
+`5d4ef05` Batch B chrome (forged-iron 9-slice on all panels, Icon Forge rack
+with molten-mint/shard-burn) →
+`90bf6ba` Batch C cast (cut-in barks, her-deck header, per-girl idles, bench
+sprites, map barks) → `c218b95` handoff update.
+All four DA rounds (concept + presentation), the polish-priorities DA, the
+creative brainstorm, and all operator rulings happened this day. Art spend
+~$7.30 total (54 images: 18 greybox + 23 polish + 1 frame + 12 cut-ins, all
+1K; 2 prompt re-rolls + 1 chroma re-key ever).
