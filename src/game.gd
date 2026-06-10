@@ -8,10 +8,14 @@ extends Node
 
 const SAVE_PATH := "user://run_save.json"
 const SETTINGS_PATH := "user://settings.json"
+## Bump on any breaking change to Run.to_dict's shape; old saves are discarded
+## with a notice instead of crashing Continue mid-playtest.
+const SAVE_VERSION := 1
 
 var db: DataDB
 var run: Run
 var settings := {}
+var stale_save_notice := false
 
 
 func _ready() -> void:
@@ -32,9 +36,11 @@ func checkpoint() -> void:
 	if run.state == "over":
 		clear_save()
 		return
+	var d := run.to_dict()
+	d["save_version"] = SAVE_VERSION
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify(run.to_dict()))
+		f.store_string(JSON.stringify(d))
 
 
 func has_save() -> bool:
@@ -44,6 +50,10 @@ func has_save() -> bool:
 func load_run() -> bool:
 	var d := _read_json(SAVE_PATH)
 	if d.is_empty():
+		return false
+	if int(d.get("save_version", 0)) != SAVE_VERSION:
+		clear_save()
+		stale_save_notice = true
 		return false
 	run = Run.from_dict(db, d)
 	return true

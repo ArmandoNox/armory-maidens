@@ -17,14 +17,20 @@ var draft_pick := ""
 var top_label: Label
 var icons_label: Label
 var battlefield: Control
-var field_root: Control           # shake target: bg + widgets + popups live here
+var field_root: Control           # shake/zoom target: bg + widgets + popups live here
 var field_bg: TextureRect
+var rim: Panel                    # screen-edge tier flash
+var ticker_box: VBoxContainer     # 3-line fading combat ticker on the field
+var log_overlay: Control          # full history, hidden behind the Log button
 var log_text: RichTextLabel
 var action_box: HFlowContainer
 var context_box: HBoxContainer
 var detail_box: VBoxContainer
 var pack_picker: OptionButton
 var widgets := {}                 # Combatant -> Control
+var outcome_staged := false       # victory/defeat staging runs once
+var outcome_nodes: Array = []     # stamps/tallies swept on restart
+var _stop_until_ms := 0           # hit-stop guard (real time)
 
 # x = fraction of field width; y = fraction of AVAILABLE height (field height
 # minus the widget's own height), so name/HP labels can never clip under the
@@ -91,6 +97,13 @@ func _build_layout() -> void:
 		restart.pressed.connect(func(): _start_battle(pack_picker.get_item_text(pack_picker.selected)))
 		UITheme.style_button(restart)
 		top_row.add_child(restart)
+	var log_btn := Button.new()
+	log_btn.text = "Log"
+	log_btn.custom_minimum_size = Vector2(56, 32)
+	log_btn.tooltip_text = "Full battle history"
+	log_btn.pressed.connect(func(): log_overlay.visible = not log_overlay.visible)
+	UITheme.style_button(log_btn)
+	top_row.add_child(log_btn)
 	var help_btn := Button.new()
 	help_btn.text = "?"
 	help_btn.custom_minimum_size = Vector2(36, 32)
@@ -127,26 +140,65 @@ func _build_layout() -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	field_root.add_child(shade)
 
+	# CRT warmth on the field only: scanlines + vignette, UI stays crisp.
+	var crt := ColorRect.new()
+	crt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	crt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var crt_mat := ShaderMaterial.new()
+	var crt_sh := Shader.new()
+	crt_sh.code = """
+shader_type canvas_item;
+void fragment() {
+	float scan = step(0.5, fract(UV.y * 180.0)) * 0.045;
+	vec2 c = UV - vec2(0.5);
+	float vig = smoothstep(0.62, 0.95, length(c)) * 0.30;
+	COLOR = vec4(0.0, 0.0, 0.0, scan + vig);
+}
+"""
+	crt_mat.shader = crt_sh
+	crt.material = crt_mat
+	battlefield.add_child(crt)
+
+	# Tier rim: a border-only panel flashed gold on WEAK / violet on reveals.
+	rim = Panel.new()
+	rim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rim_sb := StyleBoxFlat.new()
+	rim_sb.draw_center = false
+	rim_sb.border_color = Color(1, 1, 1)
+	rim_sb.set_border_width_all(5)
+	rim_sb.set_corner_radius_all(8)
+	rim.add_theme_stylebox_override("panel", rim_sb)
+	rim.modulate.a = 0.0
+	battlefield.add_child(rim)
+
+	# Two-line fading ticker replaces the old log panel; history lives in the overlay.
+	ticker_box = VBoxContainer.new()
+	ticker_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ticker_box.add_theme_constant_override("separation", 0)
+	ticker_box.alignment = BoxContainer.ALIGNMENT_END
+	battlefield.add_child(ticker_box)
+	ticker_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 10)
+	ticker_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+	# Tapping empty battlefield cancels the pending move / deselects.
+	battlefield.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed and battle != null and battle.phase != "over":
+			if pending != "":
+				pending = ""
+				_refresh()
+			elif selected_slot >= 0:
+				selected_slot = -1
+				_refresh())
+
 	var bottom := HBoxContainer.new()
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	bottom.add_theme_constant_override("separation", 10)
 	main.add_child(bottom)
 
-	var log_frame := PanelContainer.new()
-	log_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	log_frame.size_flags_stretch_ratio = 0.72
-	log_frame.add_theme_stylebox_override("panel", UITheme.panel_box())
-	bottom.add_child(log_frame)
-	log_text = RichTextLabel.new()
-	log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	log_text.scroll_following = true
-	log_text.bbcode_enabled = true
-	log_text.add_theme_font_size_override("normal_font_size", 13)
-	log_frame.add_child(log_text)
-
 	var command_frame := PanelContainer.new()
 	command_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	command_frame.size_flags_stretch_ratio = 1.18
+	command_frame.size_flags_stretch_ratio = 1.5
 	command_frame.add_theme_stylebox_override("panel", UITheme.panel_box())
 	bottom.add_child(command_frame)
 	var command := VBoxContainer.new()
@@ -163,12 +215,36 @@ func _build_layout() -> void:
 
 	var detail_frame := PanelContainer.new()
 	detail_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail_frame.size_flags_stretch_ratio = 0.74
+	detail_frame.size_flags_stretch_ratio = 1.0
 	detail_frame.add_theme_stylebox_override("panel", UITheme.panel_box(Color("#101230")))
 	bottom.add_child(detail_frame)
 	detail_box = VBoxContainer.new()
 	detail_box.add_theme_constant_override("separation", 4)
 	detail_frame.add_child(detail_box)
+
+	# Full battle history — hidden overlay, toggled by the Log button.
+	log_overlay = Control.new()
+	log_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	log_overlay.visible = false
+	log_overlay.z_index = 60
+	add_child(log_overlay)
+	var log_dim := ColorRect.new()
+	log_dim.color = Color(0, 0, 0, 0.55)
+	log_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	log_overlay.add_child(log_dim)
+	log_dim.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed:
+			log_overlay.visible = false)
+	var log_frame := PanelContainer.new()
+	log_frame.add_theme_stylebox_override("panel", UITheme.panel_box())
+	log_frame.set_anchors_preset(Control.PRESET_CENTER)
+	log_frame.custom_minimum_size = Vector2(640, 420)
+	log_overlay.add_child(log_frame)
+	log_text = RichTextLabel.new()
+	log_text.scroll_following = true
+	log_text.bbcode_enabled = true
+	log_text.add_theme_font_size_override("normal_font_size", 13)
+	log_frame.add_child(log_text)
 
 
 func _start_battle(pack: String) -> void:
@@ -190,6 +266,12 @@ func _reset_view() -> void:
 	event_cursor = battle.events.size()
 	battle_resolved = false
 	draft_pick = ""
+	outcome_staged = false
+	for n in outcome_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	outcome_nodes.clear()
+	field_root.modulate = Color(1, 1, 1)
 	log_text.clear()
 	_refresh()
 
@@ -209,6 +291,9 @@ func _refresh() -> void:
 		icons_label.text = icons_str.strip_edges()
 	_build_field()
 	_drain_events()
+	if battle.phase == "over" and not outcome_staged:
+		outcome_staged = true
+		_stage_outcome()
 	_render_actions()
 	_render_detail_default()
 
@@ -228,7 +313,28 @@ func _drain_log() -> void:
 		elif "fallen" in line or "falls" in line or "defeated" in line:
 			color = "#e2543e"
 		log_text.append_text("[color=%s]%s[/color]\n" % [color, line])
+		_ticker_line(line, Color(color))
 		log_cursor += 1
+
+
+## One fading ticker line on the field; keeps at most 3 visible.
+func _ticker_line(line: String, color: Color) -> void:
+	while ticker_box.get_child_count() >= 3:
+		var oldest := ticker_box.get_child(0)
+		ticker_box.remove_child(oldest)
+		oldest.queue_free()
+	var l := Label.new()
+	l.text = line
+	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	l.add_theme_constant_override("outline_size", 4)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ticker_box.add_child(l)
+	var tw := l.create_tween()
+	tw.tween_interval(3.6)
+	tw.tween_property(l, "modulate:a", 0.0, 0.8)
+	tw.tween_callback(l.queue_free)
 
 
 func _build_field() -> void:
@@ -282,24 +388,55 @@ func _combatant_widget(c: Combatant, side: String, idx: int) -> Control:
 	btn.custom_minimum_size = Vector2(maxf(150.0, sprite_h * 1.1), sprite_h + 84.0)
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	# Intent bubble (enemies), pulsing while it telegraphs.
+	# Intent chip (enemies): element + phys icons → target portrait, not a sentence.
 	if side == "enemy" and c.is_alive():
 		for intent in battle.intents:
 			if intent["enemy"] == idx:
 				var mv: Dictionary = db.moves[intent["move"]]
-				var who := "everyone"
-				if intent["slot"] >= 0 and intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
-					who = battle.party[intent["slot"]].display_name
-				var il := Label.new()
-				il.text = "%s → %s" % [mv["name"], who]
-				il.add_theme_font_size_override("font_size", 11)
-				il.add_theme_color_override("font_color", Color("#e8a04a"))
-				il.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				il.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				box.add_child(il)
-				var pulse := il.create_tween().set_loops()
-				pulse.tween_property(il, "modulate:a", 0.45, 0.55).set_trans(Tween.TRANS_SINE)
-				pulse.tween_property(il, "modulate:a", 1.0, 0.55).set_trans(Tween.TRANS_SINE)
+				var chip := HBoxContainer.new()
+				chip.alignment = BoxContainer.ALIGNMENT_CENTER
+				chip.add_theme_constant_override("separation", 3)
+				chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				chip.add_child(UITheme.icon_rect(mv["element"], 18, Color(db.element_colors.get(mv["element"], "#5d6275"))))
+				chip.add_child(UITheme.icon_rect(mv["phys"], 18))
+				var arrow := Label.new()
+				arrow.text = "→"
+				arrow.add_theme_font_size_override("font_size", 12)
+				arrow.add_theme_color_override("font_color", Color("#e8a04a"))
+				arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				chip.add_child(arrow)
+				var tgt_slot: int = intent["slot"]
+				var tgt: Combatant = null
+				if tgt_slot >= 0 and tgt_slot < battle.party.size():
+					tgt = battle.party[tgt_slot]
+				if tgt == null:
+					var all_l := Label.new()
+					all_l.text = "ALL"
+					all_l.add_theme_font_size_override("font_size", 11)
+					all_l.add_theme_color_override("font_color", Color("#e8a04a"))
+					all_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+					chip.add_child(all_l)
+				else:
+					var pp := "res://assets/portraits/%s.png" % tgt.id
+					if ResourceLoader.exists(pp):
+						var mini := TextureRect.new()
+						mini.texture = load(pp)
+						mini.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+						mini.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+						mini.custom_minimum_size = Vector2(20, 20)
+						mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
+						chip.add_child(mini)
+					else:
+						var nm_l := Label.new()
+						nm_l.text = tgt.display_name
+						nm_l.add_theme_font_size_override("font_size", 11)
+						nm_l.add_theme_color_override("font_color", Color("#e8a04a"))
+						nm_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+						chip.add_child(nm_l)
+				box.add_child(chip)
+				var pulse := chip.create_tween().set_loops()
+				pulse.tween_property(chip, "modulate:a", 0.5, 0.55).set_trans(Tween.TRANS_SINE)
+				pulse.tween_property(chip, "modulate:a", 1.0, 0.55).set_trans(Tween.TRANS_SINE)
 
 	# Predicted tier badge while the player is aiming a move.
 	if side == "enemy" and c.is_alive() and pending != "" and pending != "probe" and not pending.begins_with("ally:"):
@@ -405,6 +542,15 @@ func _combatant_widget(c: Combatant, side: String, idx: int) -> Control:
 	if side == "party" and pending.begins_with("ally:") and c.is_alive():
 		btn.modulate = Color(0.75, 1.0, 0.8)
 
+	# Unprobed enemies glitch — a periodic violet palette flicker you can SEE
+	# and itch to resolve. Probing stops it.
+	if side == "enemy" and c.is_alive() and not c.mutation_revealed:
+		var flick: CanvasItem = btn.get_meta("sprite_tr") if btn.has_meta("sprite_tr") else box
+		var fl := flick.create_tween().set_loops()
+		fl.tween_interval(2.2 + randf() * 1.8)
+		fl.tween_property(flick, "self_modulate", Color(1.45, 0.8, 1.55), 0.06)
+		fl.tween_property(flick, "self_modulate", Color(1, 1, 1), 0.10)
+
 	if side == "party":
 		var s := idx
 		btn.pressed.connect(func(): _on_party_clicked(s))
@@ -500,9 +646,22 @@ func _fx_hit(ev: Dictionary) -> void:
 		shake.tween_property(w, "position:x", wx + 7.0, 0.05)
 		shake.tween_property(w, "position:x", wx - 6.0, 0.06)
 		shake.tween_property(w, "position:x", wx, 0.05)
-	# Big hits and weakness crits rattle the whole field.
-	if ev["tier"] == Rules.Tier.WEAK or ev["amount"] >= 30:
-		_screen_shake(6.0 if ev["tier"] == Rules.Tier.WEAK else 4.0)
+	# Tier is FELT before the number is read: hit-stop + punch-zoom on WEAK,
+	# a flat desaturated dip on RESIST, shake on anything heavy.
+	if ev["tier"] == Rules.Tier.WEAK:
+		_hit_stop(0.14)
+		_punch_zoom(w)
+		_rim_flash(UITheme.GOLD)
+		_screen_shake(6.0)
+	elif ev["tier"] == Rules.Tier.RESIST:
+		var dip := create_tween()
+		dip.tween_property(field_root, "modulate", Color(0.72, 0.72, 0.80), 0.06)
+		dip.tween_property(field_root, "modulate", Color(1, 1, 1), 0.22)
+	else:
+		if ev["amount"] > 0:
+			_hit_stop(0.06)
+		if ev["amount"] >= 30:
+			_screen_shake(4.0)
 	# KO: the fallen one drops out of frame.
 	if not target.is_alive():
 		var fall := create_tween()
@@ -513,20 +672,42 @@ func _fx_hit(ev: Dictionary) -> void:
 	_damage_popup(w, ev)
 
 
+## Numbers with mass: spawn oversized, overshoot-shrink, then gravity-arc off.
+## Resisted numbers are small, grey, and barely lift — almost ashamed.
 func _damage_popup(w: Control, ev: Dictionary) -> void:
 	var popup := Label.new()
-	popup.add_theme_font_size_override("font_size", 22)
+	popup.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	popup.add_theme_constant_override("outline_size", 6)
+	var arc := 36.0
 	match ev["tier"]:
 		Rules.Tier.WEAK:
 			popup.text = "-%d  WEAK!" % ev["amount"]
+			popup.add_theme_font_size_override("font_size", 34)
 			popup.add_theme_color_override("font_color", UITheme.GOLD)
+			arc = 52.0
 		Rules.Tier.RESIST:
-			popup.text = "-%d  resisted" % ev["amount"]
+			popup.text = "-%d" % ev["amount"]
+			popup.add_theme_font_size_override("font_size", 14)
 			popup.add_theme_color_override("font_color", UITheme.GREY)
+			arc = 10.0
 		_:
 			popup.text = "-%d" % ev["amount"]
+			popup.add_theme_font_size_override("font_size", 23)
 			popup.add_theme_color_override("font_color", UITheme.RED)
-	_float_popup(popup, w.position + Vector2(randf_range(10, 60), -6))
+	popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	field_root.add_child(popup)
+	popup.position = w.position + Vector2(randf_range(16, 56), 4)
+	popup.scale = Vector2(2.1, 2.1)
+	popup.pivot_offset = Vector2(20, 12)
+	var drift_x := randf_range(14.0, 30.0) * (1.0 if randf() < 0.5 else -1.0)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(popup, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(popup, "position:y", popup.position.y - arc, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(popup, "position:x", popup.position.x + drift_x, 0.85)
+	tw.chain().tween_property(popup, "position:y", popup.position.y + 26.0, 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(popup, "modulate:a", 0.0, 0.5)
+	tw.chain().tween_callback(popup.queue_free)
 
 
 func _fx_heal(ev: Dictionary) -> void:
@@ -592,6 +773,117 @@ func _screen_shake(strength: float) -> void:
 	tw.tween_property(field_root, "position", Vector2(-strength * 0.7, strength * 0.3), 0.05)
 	tw.tween_property(field_root, "position", Vector2(strength * 0.4, 0), 0.04)
 	tw.tween_property(field_root, "position", Vector2.ZERO, 0.05)
+
+
+## Frame-freeze standing in for impact audio. Real-time guarded so overlapping
+## events extend rather than stack.
+func _hit_stop(duration: float) -> void:
+	var now := Time.get_ticks_msec()
+	var until := now + int(duration * 1000.0)
+	if until <= _stop_until_ms:
+		return
+	_stop_until_ms = until
+	Engine.time_scale = 0.05
+	var t := get_tree().create_timer(duration, true, false, true)  # ignores time_scale
+	t.timeout.connect(func():
+		if Time.get_ticks_msec() >= _stop_until_ms - 5:
+			Engine.time_scale = 1.0)
+
+
+func _punch_zoom(target: Control) -> void:
+	field_root.pivot_offset = target.position + target.size * 0.5
+	var tw := create_tween()
+	tw.tween_property(field_root, "scale", Vector2(1.06, 1.06), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(field_root, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+
+
+func _rim_flash(color: Color, peak := 0.85) -> void:
+	rim.self_modulate = color
+	var tw := create_tween()
+	tw.tween_property(rim, "modulate:a", peak, 0.05)
+	tw.tween_property(rim, "modulate:a", 0.0, 0.45)
+
+
+## ---- Outcome staging --------------------------------------------------------------
+
+## Victory: time-dilated tableau — attack poses + stamped VICTORY + stat count-up.
+## Defeat: the field goes dark, embers rise, the verdict stamps in letter by letter.
+func _stage_outcome() -> void:
+	if battle.result == "victory":
+		for c in battle.party:
+			if c == null or not widgets.has(c):
+				continue
+			var w: Control = widgets[c]
+			if w.has_meta("attack_tex") and w.has_meta("sprite_tr"):
+				(w.get_meta("sprite_tr") as TextureRect).texture = w.get_meta("attack_tex")
+		_rim_flash(UITheme.GOLD)
+		var stamp := _stamp_label("VICTORY", UITheme.GOLD, 54)
+		stamp.scale = Vector2(3.0, 3.0)
+		var tw := create_tween()
+		tw.tween_property(stamp, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_callback(func(): _screen_shake(5.0))
+		# Stat tally counts up with escalating ticks.
+		var tally := Label.new()
+		tally.add_theme_font_size_override("font_size", 16)
+		tally.add_theme_color_override("font_color", Color("#c8ccd8"))
+		tally.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		tally.add_theme_constant_override("outline_size", 5)
+		tally.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tally.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		battlefield.add_child(tally)
+		tally.set_anchors_preset(Control.PRESET_CENTER)
+		tally.position += Vector2(-160, 44)
+		tally.custom_minimum_size = Vector2(320, 0)
+		outcome_nodes.append(tally)
+		var wk := int(battle.stats["weak_hits"])
+		var rd := int(battle.stats["rounds"])
+		var sw := int(battle.stats["switches"])
+		var tick := func(t: float):
+			if is_instance_valid(tally):
+				tally.text = "weak hits %d   rounds %d   switches %d" % [roundi(wk * t), roundi(rd * t), roundi(sw * t)]
+		var count := create_tween()
+		count.tween_method(tick, 0.0, 1.0, 0.9).set_delay(0.25)
+	else:
+		var dip := create_tween()
+		dip.tween_property(field_root, "modulate", Color(0.40, 0.38, 0.46), 1.2)
+		var stamp := _stamp_label("THE PARTY HAS FALLEN", UITheme.RED, 40)
+		stamp.visible_characters = 0
+		var tw := create_tween()
+		tw.tween_property(stamp, "visible_characters", stamp.text.length(), 1.5).set_delay(0.4)
+		for i in 14:
+			var ember := ColorRect.new()
+			ember.color = Color("#e2543e") if i % 3 != 0 else Color("#e8a04a")
+			var s := 2.0 + randf() * 3.0
+			ember.size = Vector2(s, s)
+			ember.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			field_root.add_child(ember)
+			ember.position = Vector2(randf() * battlefield.size.x, battlefield.size.y * (0.55 + randf() * 0.4))
+			ember.modulate.a = 0.0
+			var et := ember.create_tween()
+			et.tween_interval(randf() * 1.2)
+			et.tween_property(ember, "modulate:a", 0.9, 0.3)
+			et.parallel().tween_property(ember, "position:y", ember.position.y - (60.0 + randf() * 120.0), 2.4 + randf() * 1.5)
+			et.parallel().tween_property(ember, "position:x", ember.position.x + randf_range(-24.0, 24.0), 2.6)
+			et.tween_property(ember, "modulate:a", 0.0, 0.6)
+			et.tween_callback(ember.queue_free)
+
+
+func _stamp_label(text: String, color: Color, size: int) -> Label:
+	var stamp := Label.new()
+	stamp.text = text
+	stamp.add_theme_font_size_override("font_size", size)
+	stamp.add_theme_color_override("font_color", color)
+	stamp.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+	stamp.add_theme_constant_override("outline_size", 8)
+	stamp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	battlefield.add_child(stamp)
+	stamp.set_anchors_preset(Control.PRESET_CENTER)
+	stamp.reset_size()
+	stamp.position -= stamp.size * 0.5
+	stamp.pivot_offset = stamp.size * 0.5
+	outcome_nodes.append(stamp)
+	return stamp
 
 
 ## ---- Command deck ----------------------------------------------------------------
@@ -666,9 +958,24 @@ func _move_button(move_id: String, girl: Combatant) -> Button:
 	if pending == move_id or pending == "ally:" + move_id:
 		btn.add_theme_color_override("font_color", UITheme.GOLD)
 
+	# Heat-edge: a slim element-colored blade edge with a slow idle shimmer.
+	var edge := ColorRect.new()
+	edge.color = Color(db.element_colors.get(mv["element"], "#5d6275"))
+	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(edge)
+	edge.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	edge.offset_left = 1
+	edge.offset_right = 4
+	edge.offset_top = 2
+	edge.offset_bottom = -2
+	var shimmer := edge.create_tween().set_loops()
+	shimmer.tween_property(edge, "modulate:a", 0.45, 1.1 + randf() * 0.5).set_trans(Tween.TRANS_SINE)
+	shimmer.tween_property(edge, "modulate:a", 1.0, 1.1 + randf() * 0.5).set_trans(Tween.TRANS_SINE)
+
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 9
 	row.add_theme_constant_override("separation", 6)
 	btn.add_child(row)
 	var icon_col := VBoxContainer.new()
@@ -805,6 +1112,14 @@ func _render_detail_enemy(c: Combatant) -> void:
 			lines.append(["Mutation: %s %s" % [m["key"], "WEAK" if m["mult"] >= Rules.WEAK_MULT else "RESIST"], UITheme.PURPLE])
 	elif not c.mutation_revealed:
 		lines.append(["[?] Unprobed — one affinity may be flipped.", UITheme.PURPLE])
+	var ei := battle.enemies.find(c)
+	for intent in battle.intents:
+		if intent["enemy"] == ei:
+			var imv: Dictionary = db.moves[intent["move"]]
+			var who := "the whole party"
+			if intent["slot"] >= 0 and intent["slot"] < battle.party.size() and battle.party[intent["slot"]] != null:
+				who = battle.party[intent["slot"]].display_name
+			lines.append(["Intends: %s (%s/%s) → %s" % [imv["name"], imv["element"], imv["phys"], who], Color("#e8a04a")])
 	_detail_lines(c.display_name, lines)
 
 
@@ -929,6 +1244,10 @@ func _set_pending(p: String) -> void:
 
 
 func _on_move_clicked(move_id: String) -> void:
+	# Re-tapping the pending move cancels the aim.
+	if pending == move_id or pending == "ally:" + move_id:
+		_set_pending("")
+		return
 	var mv: Dictionary = db.moves[move_id]
 	match mv.get("target", "enemy"):
 		"enemy":
@@ -952,7 +1271,17 @@ func _on_enemy_clicked(ei: int) -> void:
 
 func _do_action(action: Dictionary) -> void:
 	pending = ""
+	var revealed_before := 0
+	for e in battle.enemies:
+		if e.mutation_revealed:
+			revealed_before += 1
 	battle.player_action(action)
+	var revealed_after := 0
+	for e in battle.enemies:
+		if e.mutation_revealed:
+			revealed_after += 1
+	if revealed_after > revealed_before:
+		_rim_flash(UITheme.PURPLE, 0.7)
 	if battle.phase != "over":
 		if selected_slot >= 0:
 			var g: Combatant = battle.party[selected_slot]

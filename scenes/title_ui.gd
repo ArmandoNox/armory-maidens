@@ -78,12 +78,26 @@ func _build() -> void:
 	if Game.has_save():
 		_menu_button(btn_col, "Continue", UITheme.GOLD, func():
 			if Game.load_run():
-				get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
+				get_tree().change_scene_to_file("res://scenes/run_map.tscn")
+			else:
+				# Stale/corrupt save was discarded — rebuild the menu with notice.
+				for ch in get_children():
+					ch.queue_free()
+				_build())
 	_menu_button(btn_col, "New Run", UITheme.GOLD if not Game.has_save() else Color("#c8ccd8"), func():
 		Game.new_run()
 		get_tree().change_scene_to_file("res://scenes/run_map.tscn"))
 	_menu_button(btn_col, "How to Play", UITheme.PURPLE, func(): HelpOverlay.popup(self))
 	_menu_button(btn_col, "Settings", Color("#8d93a5"), _settings_popup)
+
+	if Game.stale_save_notice:
+		Game.stale_save_notice = false
+		var notice := Label.new()
+		notice.text = "Your save was from an older build and has been retired. Fresh run awaits."
+		notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		notice.add_theme_font_size_override("font_size", 13)
+		notice.add_theme_color_override("font_color", Color("#e8a04a"))
+		col.add_child(notice)
 
 	var foot := Label.new()
 	foot.text = "act 1 preview build"

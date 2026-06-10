@@ -197,13 +197,14 @@ func _draw_edges(overlay: Control, node_buttons: Array) -> void:
 					var to_btn: Button = node_buttons[f + 1][j]
 					var p1: Vector2 = from_btn.get_global_rect().get_center() - overlay.global_position + Vector2(0, -from_btn.size.y * 0.5)
 					var p2: Vector2 = to_btn.get_global_rect().get_center() - overlay.global_position + Vector2(0, to_btn.size.y * 0.5)
-					var col := Color("#3a3f55")
+					var col := Color("#2c3046")  # chalk-faint future path
 					var width := 2.0
 					if f == run.cur_floor and i == run.cur_index:
 						col = UITheme.GOLD  # the paths you can take right now
 						width = 3.0
-					elif run.cur_floor < 0 and f == 0:
-						pass
+					elif run.map[f][i]["done"] and run.map[f + 1][j]["done"]:
+						col = Color("#b06a3a")  # the trail you walked
+						width = 3.0
 					overlay.draw_line(p1, p2, col, width))
 	overlay.queue_redraw()
 
